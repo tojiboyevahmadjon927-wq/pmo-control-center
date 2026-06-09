@@ -4,6 +4,10 @@ on:
   push:
     branches: [ main ]
 
+env:
+  DOCKER_BUILDKIT: 0
+  COMPOSE_DOCKER_CLI_BUILD: 0
+
 jobs:
   deploy:
     runs-on: self-hosted
