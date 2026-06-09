@@ -33,7 +33,7 @@ services:
       DB_PASSWORD: ""
       DB_NAME: pmo_db
     ports:
-      - "8080:8080"
+      - "8300:8080"
     volumes:
       - ./pmo_data.json:/app/pmo_data.json
 
