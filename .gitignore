@@ -1,0 +1,7 @@
+node_modules/
+npm-debug.log
+agent_config.json
+pmo_data.json
+team_link.txt
+.DS_Store
+Thumbs.db

@@ -1,0 +1,7 @@
+node_modules
+npm-debug.log
+*.bat
+*.txt
+.git
+.gitignore
+team_link.txt

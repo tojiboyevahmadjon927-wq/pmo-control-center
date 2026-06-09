@@ -1,0 +1,24 @@
+{
+  "_comment": "Скопируй этот файл в agent_config.json и заполни своими данными. agent_config.json в Git не попадает (см. .gitignore)",
+  "groq_api_key": "gsk_ВСТАВЬ_GROQ_КЛЮЧ_ЗДЕСЬ",
+  "groq_model": "llama-3.3-70b-versatile",
+  "claude_api_key": "sk-ant-ВСТАВЬ_СВОЙ_КЛЮЧ_ЗДЕСЬ",
+  "telegram_token": "ВСТАВЬ_ТОКЕН_БОТА_ОТ_BOTFATHER",
+  "admin_telegram_ids": [
+    "ВСТАВЬ_СВОЙ_TELEGRAM_CHAT_ID"
+  ],
+  "telegram_chat_ids": {
+    "Нозим А.": "TELEGRAM_ID_НОЗИМА",
+    "Алия Ю.": "TELEGRAM_ID_АЛИИ",
+    "Шахзод Р.": "TELEGRAM_ID_ШАХЗОДА",
+    "Тохир Ю.": "TELEGRAM_ID_ТОХИРА",
+    "Акмал Х.": "TELEGRAM_ID_АКМАЛА"
+  },
+  "_instructions": {
+    "0_groq_free": "БЕСПЛАТНО: console.groq.com -> Sign Up -> API Keys -> Create (без карты!)",
+    "1_claude_key": "Платно: console.anthropic.com -> API Keys (есть бесплатный лимит)",
+    "2_telegram_bot": "Создай бота: напиши @BotFather в Telegram -> /newbot",
+    "3_your_chat_id": "Узнай свой chat_id: напиши @userinfobot в Telegram",
+    "4_team_chat_ids": "Попроси каждого сотрудника написать @userinfobot и сообщить тебе id"
+  }
+}
