@@ -1,11 +1,9 @@
 -- PMO Control Center - MySQL Setup
--- Run: mysql -u root -p < setup.sql
-
 CREATE DATABASE IF NOT EXISTS pmo_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE pmo_db;
 
 CREATE TABLE IF NOT EXISTS users (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id INT PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   role VARCHAR(20) DEFAULT 'member',
   product VARCHAR(200),
@@ -18,13 +16,13 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS projects (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id INT PRIMARY KEY,
   name VARCHAR(200) NOT NULL,
   stage VARCHAR(50) DEFAULT 'Initiation',
   status VARCHAR(30) DEFAULT 'on_track',
   owner VARCHAR(100),
   ownerColor VARCHAR(20),
-  northStar VARCHAR(300),
+  northStar VARCHAR(500),
   budgetPlan DECIMAL(15,2) DEFAULT 0,
   budgetFact DECIMAL(15,2) DEFAULT 0,
   deadline DATE,
@@ -38,7 +36,7 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id INT PRIMARY KEY,
   projectId INT,
   title VARCHAR(300) NOT NULL,
   owner VARCHAR(100),
@@ -68,13 +66,5 @@ CREATE TABLE IF NOT EXISTS collab_requests (
   taskId INT,
   createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
-INSERT INTO users (name,role,product,email,pos,password,access) VALUES
-('Nozim A.','ceo','All products','nozim@company.uz','CEO','nozim','["overview","projects","kanban","plans","tasks","collab","admin"]'),
-('Aliya Yu.','manager','B2B, Prime Stream','aliya@company.uz','Product Manager','aliya','["overview","projects","kanban","plans","tasks","collab"]'),
-('Shakhzod R.','manager','Synerama','shaxzod@company.uz','Product Manager','shaxzod','["overview","projects","kanban","plans","tasks","collab"]'),
-('Tokhir Yu.','manager','T-Cloud','toxir@company.uz','Product Manager','toxir','["overview","projects","kanban","plans","tasks","collab"]'),
-('Akmal Kh.','manager','Finance','akmal@company.uz','CFO','akmal','["overview","projects","kanban","plans","tasks","collab"]')
-ON DUPLICATE KEY UPDATE name=name;
 
 SELECT 'Database ready!' AS status;

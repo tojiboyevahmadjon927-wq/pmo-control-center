@@ -9,9 +9,32 @@ async function connectDB(){
     await pool.execute('SELECT 1');
     db=pool;
     console.log('  [DB] MySQL connected (pool)!');
+    await seedDB();
   }catch(e){
     console.log('  [DB] MySQL not available, using file: pmo_data.json');
     db=null;
+  }
+}
+async function seedDB(){
+  try{
+    const[rows]=await db.execute('SELECT COUNT(*) as cnt FROM users');
+    if(rows[0].cnt>0){console.log('  [DB] Already seeded, skipping.');return;}
+    console.log('  [DB] Seeding default data...');
+    for(const u of DEFAULT_DATA.users){
+      await db.execute('INSERT IGNORE INTO users(id,name,role,product,email,pos,password,access,added)VALUES(?,?,?,?,?,?,?,?,?)',
+        [u.id,u.name,u.role,u.product,u.email,u.pos,u.password,JSON.stringify(u.access),u.added]);
+    }
+    for(const p of DEFAULT_DATA.projects){
+      await db.execute('INSERT IGNORE INTO projects(id,name,stage,status,owner,ownerColor,northStar,budgetPlan,budgetFact,deadline,progress,yearlyGoal,kpis,issues,monthlyPlan,description)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        [p.id,p.name,p.stage,p.status,p.owner,p.ownerColor,p.northStar,p.budgetPlan,p.budgetFact,p.deadline,p.progress,p.yearlyGoal,JSON.stringify(p.kpis),JSON.stringify(p.issues),JSON.stringify(p.monthlyPlan),p.desc]);
+    }
+    for(const t of DEFAULT_DATA.tasks){
+      await db.execute('INSERT IGNORE INTO tasks(id,projectId,title,owner,deadline,status,priority,sprint,goal,progress,kpis,issues,description)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        [t.id,t.projectId,t.title,t.owner,t.deadline,t.status,t.priority,t.sprint,t.goal,t.progress||null,JSON.stringify(t.kpis),JSON.stringify(t.issues),t.desc]);
+    }
+    console.log('  [DB] Seeded: '+DEFAULT_DATA.users.length+' users, '+DEFAULT_DATA.projects.length+' projects, '+DEFAULT_DATA.tasks.length+' tasks');
+  }catch(e){
+    console.log('  [DB] Seed error:',e.message);
   }
 }
 const DATA_DIR=process.env.DATA_DIR||path.join(DIR,'data');
