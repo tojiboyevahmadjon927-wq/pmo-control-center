@@ -1,24 +1,21 @@
-name: Deploy (local)
+name: Deploy to VPS
 
 on:
   push:
     branches: [ main ]
 
-env:
-  DOCKER_BUILDKIT: 0
-  COMPOSE_DOCKER_CLI_BUILD: 0
-
 jobs:
   deploy:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
-      - name: Pull latest code
-        working-directory: C:\Users\User\OneDrive\Desktop\сайт
-        run: git pull origin main
-
-      - name: Restart Docker containers
-        working-directory: C:\Users\User\OneDrive\Desktop\сайт
-        run: docker compose up -d --build
-
-      - name: Done
-        run: echo Deployed!
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          script: |
+            cd /var/www/pmo-control-center
+            git pull origin main
+            DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 docker compose up -d --build
+            echo "Deployed!"

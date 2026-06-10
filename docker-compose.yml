@@ -35,7 +35,7 @@ services:
     ports:
       - "8300:8080"
     volumes:
-      - ./pmo_data.json:/app/pmo_data.json
+      - pmo_app_data:/app/data
 
   agent:
     build: .
@@ -49,8 +49,9 @@ services:
     ports:
       - "8081:8081"
     volumes:
-      - ./pmo_data.json:/app/pmo_data.json
+      - pmo_app_data:/app/data
       - ./agent_config.json:/app/agent_config.json
 
 volumes:
   pmo_mysql_data:
+  pmo_app_data:
