@@ -67,4 +67,13 @@ CREATE TABLE IF NOT EXISTS collab_requests (
   createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS chat_history (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  role VARCHAR(10) NOT NULL,
+  content TEXT NOT NULL,
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_user (userId)
+);
+
 SELECT 'Database ready!' AS status;

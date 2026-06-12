@@ -9,11 +9,25 @@ async function connectDB(){
     await pool.execute('SELECT 1');
     db=pool;
     console.log('  [DB] MySQL connected (pool)!');
+    await ensureChatTable();
     await seedDB();
   }catch(e){
     console.log('  [DB] MySQL not available, using file: pmo_data.json');
     db=null;
   }
+}
+async function ensureChatTable(){
+  if(!db)return;
+  try{
+    await db.execute(`CREATE TABLE IF NOT EXISTS chat_history (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      userId INT NOT NULL,
+      role VARCHAR(10) NOT NULL,
+      content TEXT NOT NULL,
+      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_user (userId)
+    )`);
+  }catch(e){console.log('  [DB] chat_history:',e.message);}
 }
 async function seedDB(){
   try{
@@ -186,6 +200,60 @@ connectDB().then(()=>{
     console.log('  DB  : '+(db?'MySQL (pool)':'File: pmo_data.json'));
     console.log('  Stop: Ctrl+C\n'+s+'\n');
   });
+});
+
+// ============================================================
+// CHAT HISTORY
+// ============================================================
+app.get('/api/chat/history',async(req,res)=>{
+  const userId=parseInt(req.query.userId);
+  const limit=parseInt(req.query.limit)||100;
+  if(!userId)return res.json({ok:false,error:'no userId'});
+  try{
+    if(db){
+      const[rows]=await db.execute(
+        'SELECT role,content,createdAt FROM chat_history WHERE userId=? ORDER BY createdAt ASC LIMIT ?',
+        [userId,limit]
+      );
+      return res.json({ok:true,messages:rows});
+    }
+    const d=lf();
+    const history=(d&&d.chatHistory&&d.chatHistory[userId])||[];
+    res.json({ok:true,messages:history.slice(-limit)});
+  }catch(e){res.json({ok:false,error:e.message});}
+});
+
+app.post('/api/chat/save',async(req,res)=>{
+  const{userId,role,content}=req.body;
+  if(!userId||!role||!content)return res.json({ok:false,error:'missing'});
+  try{
+    if(db){
+      await db.execute('INSERT INTO chat_history(userId,role,content)VALUES(?,?,?)',[userId,role,content]);
+      // Keep last 200 messages per user
+      await db.execute(
+        'DELETE FROM chat_history WHERE userId=? AND id NOT IN (SELECT id FROM (SELECT id FROM chat_history WHERE userId=? ORDER BY createdAt DESC LIMIT 200) t)',
+        [userId,userId]
+      );
+    }else{
+      const d=lf();
+      if(!d.chatHistory)d.chatHistory={};
+      if(!d.chatHistory[userId])d.chatHistory[userId]=[];
+      d.chatHistory[userId].push({role,content,createdAt:new Date().toISOString()});
+      if(d.chatHistory[userId].length>200)d.chatHistory[userId]=d.chatHistory[userId].slice(-200);
+      sf(d);
+    }
+    res.json({ok:true});
+  }catch(e){res.json({ok:false,error:e.message});}
+});
+
+app.delete('/api/chat/history',async(req,res)=>{
+  const userId=parseInt(req.query.userId);
+  if(!userId)return res.json({ok:false,error:'no userId'});
+  try{
+    if(db)await db.execute('DELETE FROM chat_history WHERE userId=?',[userId]);
+    else{const d=lf();if(d&&d.chatHistory)delete d.chatHistory[userId];sf(d);}
+    res.json({ok:true});
+  }catch(e){res.json({ok:false,error:e.message});}
 });
 
 // ============================================================

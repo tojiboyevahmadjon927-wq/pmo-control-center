@@ -1402,7 +1402,7 @@ initLogin();
       <div class="ai-panel-title">🤖 ИИ-агент PMO</div>
       <div class="ai-panel-sub" id="ai-source-label">Подключение к агенту...</div>
     </div>
-    <button class="ai-close" onclick="toggleAI()">✕</button>
+    <div style="display:flex;gap:6px;align-items:center"><button onclick="clearChatHistory()" title="Очистить историю" style="background:none;border:none;cursor:pointer;color:#ffffff88;font-size:13px;padding:4px 6px;border-radius:6px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#ffffff88'">🗑</button><button class="ai-close" onclick="toggleAI()">✕</button></div>
   </div>
   <div class="ai-messages" id="ai-messages"></div>
   <div class="ai-quickbtns" id="ai-quickbtns">
@@ -1431,6 +1431,7 @@ initLogin();
 // ===== AI AGENT =====
 var aiOpen = false;
 var aiHistory = [];
+var aiHistoryLoaded = false;
 
 function toggleAI() {
   aiOpen = !aiOpen;
@@ -1438,9 +1439,50 @@ function toggleAI() {
   panel.classList.toggle('open', aiOpen);
   if (aiOpen) {
     document.getElementById('ai-badge').style.display = 'none';
-    if (!aiHistory.length) aiGreet();
+    if (!aiHistoryLoaded) loadChatHistory();
     setTimeout(function(){ document.getElementById('ai-inp').focus(); }, 200);
   }
+}
+
+async function loadChatHistory() {
+  aiHistoryLoaded = true;
+  if (!currentUser) { aiGreet(); return; }
+  try {
+    var r = await fetch('/api/chat/history?userId=' + currentUser.id + '&limit=100');
+    var data = await r.json();
+    if (data.ok && data.messages && data.messages.length) {
+      data.messages.forEach(function(m) {
+        aiAddMsg(m.role, m.content, true);
+        aiHistory.push({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.content });
+      });
+      var msgs = document.getElementById('ai-messages');
+      msgs.scrollTop = msgs.scrollHeight;
+    } else {
+      aiGreet();
+    }
+  } catch(e) { aiGreet(); }
+}
+
+async function clearChatHistory() {
+  if (!currentUser) return;
+  if (!confirm('Очистить историю чата?')) return;
+  try {
+    await fetch('/api/chat/history?userId=' + currentUser.id, { method: 'DELETE' });
+    aiHistory = [];
+    aiHistoryLoaded = false;
+    document.getElementById('ai-messages').innerHTML = '';
+    aiGreet();
+  } catch(e) {}
+}
+
+async function saveChatMsg(role, content) {
+  if (!currentUser) return;
+  try {
+    await fetch('/api/chat/save', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ userId: currentUser.id, role: role, content: content })
+    });
+  } catch(e) {}
 }
 
 function aiGreet() {
@@ -1496,6 +1538,7 @@ async function aiSend() {
 
   aiAddMsg('user', msg);
   aiHistory.push({ role: 'user', content: msg });
+  saveChatMsg('user', msg);
   aiShowThinking();
 
   // Build context from current data
@@ -1529,6 +1572,7 @@ async function aiSend() {
     if (data.ok) {
       var reply = data.reply;
       aiAddMsg('ai', reply);
+      saveChatMsg('ai', reply);
       document.getElementById('ai-source-label').textContent = '✨ Claude AI Agent';
 
       // Handle actions (create_task, update_task)
@@ -1577,7 +1621,7 @@ async function aiSend() {
       });
       var data2 = await r2.json();
       aiRemoveThinking();
-      if (data2.ok) { aiAddMsg('ai', data2.reply); document.getElementById('ai-send-btn').disabled = false; return; }
+      if (data2.ok) { aiAddMsg('ai', data2.reply); saveChatMsg('ai', data2.reply); document.getElementById('ai-send-btn').disabled = false; return; }
     } catch(e2) {}
     aiRemoveThinking();
     aiAddMsg('ai', '⚠️ Нет связи с сервером. Убедись что сервер запущен.');
