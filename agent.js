@@ -11,7 +11,8 @@ const path  = require('path');
 
 const DIR         = __dirname;
 const CONFIG_FILE = path.join(DIR, 'agent_config.json');
-const DATA_FILE   = path.join(DIR, 'pmo_data.json');
+const DATA_DIR    = process.env.DATA_DIR || path.join(DIR, 'data');
+const DATA_FILE   = path.join(DATA_DIR, 'pmo_data.json');
 
 // ============================================================
 // CONFIG

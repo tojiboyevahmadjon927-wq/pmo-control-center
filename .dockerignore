@@ -5,3 +5,6 @@ npm-debug.log
 .git
 .gitignore
 team_link.txt
+agent_config.json
+pmo_data.json
+data/
