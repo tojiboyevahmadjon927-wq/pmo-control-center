@@ -204,54 +204,52 @@ app.post('/api/upload-file',upload.single('file'),async(req,res)=>{
     if(!text.trim())return res.json({ok:false,error:'Файл пустой или не удалось прочитать текст'});
     const snippet=text.slice(0,10000);
     const agentMsg=`Тебе загрузили файл проекта "${file.originalname}".
-Твоя задача: проанализировать содержимое и АВТОМАТИЧЕСКИ внести все данные в PMO систему.
-Что нужно сделать:
-1. Определи к какому продукту относится файл (по названию или содержимому)
-2. Обнови northStar, KPI, описание продукта если есть
-3. Создай или обнови задачи из roadmap/плана
-4. Обнови месячный план если есть timeline
-5. В конце дай краткий отчёт что было добавлено/обновлено
+Твоя задача: проанализировать содержимое и составить структурированный отчёт.
+1. Определи продукт/проект
+2. Выдели KPI, цели, задачи, сроки, риски
+3. Дай рекомендации что внести в PMO систему
 
 СОДЕРЖИМОЕ ФАЙЛА:
 ${snippet}`;
-    const agentHost=process.env.AGENT_HOST||'localhost';
-    const agentPort=process.env.AGENT_PORT||'8081';
-    const body=JSON.stringify({message:agentMsg,chatId:req.body.chatId||'file-upload'});
-    const result=await new Promise((resolve,reject)=>{
-      const r=require('http').request({
-        hostname:agentHost,port:agentPort,path:'/agent',method:'POST',
-        headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}
-      },resp=>{
-        let buf='';resp.on('data',c=>buf+=c);
-        resp.on('end',()=>{try{resolve(JSON.parse(buf));}catch(e){reject(e);}});
-      });
-      r.on('error',reject);r.write(body);r.end();
-    });
-    res.json({ok:true,filename:file.originalname,chars:text.length,reply:result.reply||result.error||'Анализ завершён'});
+    const sys=`Ты — ИИ-аналитик PMO Турон Телеком. Анализируй файлы проектов и выдавай структурированные выводы на русском.`;
+    const reply=await callAI(agentMsg,sys);
+    res.json({ok:true,filename:file.originalname,chars:text.length,reply});
   }catch(e){res.json({ok:false,error:e.message});}
 });
 
-// Proxy to AI agent (fallback if browser can't reach port 8081 directly)
+// Direct AI call (Groq/Claude) — no inter-container proxy needed
+const AGENT_CFG_FILE=path.join(DIR,'agent_config.json');
+function loadAgentCfg(){try{return JSON.parse(fs.readFileSync(AGENT_CFG_FILE,'utf8'));}catch(e){return{};}}
+function groqRequest(key,model,messages,cb){
+  const body=JSON.stringify({model:model||'llama-3.3-70b-versatile',messages,max_tokens:2048,temperature:0.7});
+  const req=require('https').request({hostname:'api.groq.com',path:'/openai/v1/chat/completions',method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'Content-Length':Buffer.byteLength(body)}
+  },res2=>{let buf='';res2.on('data',c=>buf+=c);res2.on('end',()=>{try{cb(null,JSON.parse(buf));}catch(e){cb(e);}});});
+  req.on('error',cb);req.write(body);req.end();
+}
+async function callAI(message,systemPrompt){
+  const cfg=loadAgentCfg();
+  const key=cfg.groq_api_key||cfg.claude_api_key||'';
+  if(!key)throw new Error('API ключ не настроен в agent_config.json');
+  const model=cfg.groq_model||'llama-3.3-70b-versatile';
+  const messages=[{role:'system',content:systemPrompt},{role:'user',content:message}];
+  return new Promise((resolve,reject)=>{
+    groqRequest(key,model,messages,(err,data)=>{
+      if(err)return reject(err);
+      if(data.error)return reject(new Error(data.error.message));
+      resolve(data.choices[0].message.content);
+    });
+  });
+}
+
 app.post('/api/ai',async(req,res)=>{
   try{
-    const agentHost=process.env.AGENT_HOST||'localhost';
-    const agentPort=process.env.AGENT_PORT||'8081';
-    const body=JSON.stringify(req.body);
-    const result=await new Promise((resolve,reject)=>{
-      const r=require('http').request({hostname:agentHost,port:agentPort,path:'/agent',method:'POST',
-        headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}
-      },resp=>{
-        let buf='';
-        resp.on('data',c=>buf+=c);
-        resp.on('end',()=>{try{resolve(JSON.parse(buf));}catch(e){reject(e);}});
-      });
-      r.on('error',reject);
-      r.write(body);r.end();
-    });
-    res.json(result);
-  }catch(e){
-    res.json({ok:false,error:'Агент недоступен: '+e.message});
-  }
+    const{message,context}=req.body;
+    const sys=`Ты — ИИ-агент PMO Турон Телеком. Отвечай кратко на русском. Используй эмодзи.
+Контекст: ${JSON.stringify(context||{}).slice(0,3000)}`;
+    const reply=await callAI(message,sys);
+    res.json({ok:true,reply});
+  }catch(e){res.json({ok:false,error:e.message});}
 });
 
 app.get('/{*splat}',(req,res)=>res.sendFile(path.join(DIR,'PMO_Control_Center.html')));

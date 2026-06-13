@@ -38,6 +38,7 @@ services:
       - "8300:8080"
     volumes:
       - pmo_app_data:/app/data
+      - ./agent_config.json:/app/agent_config.json
 
   agent:
     build: .
