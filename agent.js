@@ -604,13 +604,15 @@ async function main() {
   console.log('\n' + '='.repeat(50));
   console.log('  🤖 PMO AI AGENT — Турон Телеком');
   console.log('='.repeat(50));
-  console.log(`  Claude API:  ${config.claude_api_key ? '✅ Настроен' : '❌ НЕ НАСТРОЕН'}`);
+  const activeKey = config.claude_api_key || config.groq_api_key || '';
+  const keyType = activeKey.startsWith('gsk_') ? '✅ Groq (бесплатно)' : activeKey ? '✅ Claude API' : '❌ НЕ НАСТРОЕН';
+  console.log(`  AI API:      ${keyType}`);
   console.log(`  Telegram:    ${config.telegram_token ? '✅ Настроен' : '⚠️  Не настроен'}`);
   console.log(`  Данные PMO:  ${fs.existsSync(DATA_FILE) ? '✅ pmo_data.json' : '⚠️  Файл не найден'}`);
   console.log('='.repeat(50) + '\n');
 
-  if (!config.claude_api_key) {
-    console.error('❌ Добавь claude_api_key в agent_config.json!');
+  if (!activeKey) {
+    console.error('❌ Добавь claude_api_key или groq_api_key в agent_config.json!');
     process.exit(1);
   }
 

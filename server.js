@@ -180,6 +180,57 @@ app.post('/api/admin/reset-password',async(req,res)=>{
   }catch(e){res.json({ok:false,error:e.message});}
 });
 
+// ============================================================
+// FILE UPLOAD & ANALYSIS
+// ============================================================
+const multer=require('multer');
+const mammoth=require('mammoth');
+const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:15*1024*1024}});
+
+app.post('/api/upload-file',upload.single('file'),async(req,res)=>{
+  try{
+    const file=req.file;
+    if(!file)return res.json({ok:false,error:'Файл не получен'});
+    const ext=(file.originalname.split('.').pop()||'').toLowerCase();
+    let text='';
+    if(ext==='docx'){
+      const r=await mammoth.extractRawText({buffer:file.buffer});
+      text=r.value;
+    }else if(['txt','md','csv'].includes(ext)){
+      text=file.buffer.toString('utf8');
+    }else{
+      return res.json({ok:false,error:'Поддерживаются: .docx, .txt, .md, .csv'});
+    }
+    if(!text.trim())return res.json({ok:false,error:'Файл пустой или не удалось прочитать текст'});
+    const snippet=text.slice(0,10000);
+    const agentMsg=`Тебе загрузили файл проекта "${file.originalname}".
+Твоя задача: проанализировать содержимое и АВТОМАТИЧЕСКИ внести все данные в PMO систему.
+Что нужно сделать:
+1. Определи к какому продукту относится файл (по названию или содержимому)
+2. Обнови northStar, KPI, описание продукта если есть
+3. Создай или обнови задачи из roadmap/плана
+4. Обнови месячный план если есть timeline
+5. В конце дай краткий отчёт что было добавлено/обновлено
+
+СОДЕРЖИМОЕ ФАЙЛА:
+${snippet}`;
+    const agentHost=process.env.AGENT_HOST||'localhost';
+    const agentPort=process.env.AGENT_PORT||'8081';
+    const body=JSON.stringify({message:agentMsg,chatId:req.body.chatId||'file-upload'});
+    const result=await new Promise((resolve,reject)=>{
+      const r=require('http').request({
+        hostname:agentHost,port:agentPort,path:'/agent',method:'POST',
+        headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}
+      },resp=>{
+        let buf='';resp.on('data',c=>buf+=c);
+        resp.on('end',()=>{try{resolve(JSON.parse(buf));}catch(e){reject(e);}});
+      });
+      r.on('error',reject);r.write(body);r.end();
+    });
+    res.json({ok:true,filename:file.originalname,chars:text.length,reply:result.reply||result.error||'Анализ завершён'});
+  }catch(e){res.json({ok:false,error:e.message});}
+});
+
 // Proxy to AI agent (fallback if browser can't reach port 8081 directly)
 app.post('/api/ai',async(req,res)=>{
   try{

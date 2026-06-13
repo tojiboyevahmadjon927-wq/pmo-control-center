@@ -1414,6 +1414,8 @@ initLogin();
     <button class="ai-qbtn" onclick="aiAsk('Что умеешь?')">❓ Помощь</button>
   </div>
   <div class="ai-input-row">
+    <button class="ai-send" title="Загрузить файл проекта (.docx, .txt)" onclick="document.getElementById('ai-file-inp').click()" style="background:var(--card2);border:1px solid var(--border);color:var(--muted);font-size:16px;">📎</button>
+    <input type="file" id="ai-file-inp" accept=".docx,.txt,.md,.csv" style="display:none" onchange="aiUploadFile(this)">
     <textarea class="ai-inp" id="ai-inp" placeholder="Спроси что угодно..." rows="1"
       onkeydown="if(event.keyCode===13&&!event.shiftKey){event.preventDefault();aiSend()}"
       oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
@@ -1632,6 +1634,41 @@ async function aiSend() {
 
 function saveAiKey(key) {
   localStorage.setItem('ai_api_key', key);
+}
+
+async function aiUploadFile(input) {
+  var file = input.files[0];
+  if (!file) return;
+  input.value = '';
+
+  // Show user message
+  aiAddMsg('user', '📎 Загружаю файл: ' + file.name + '...');
+  aiShowThinking();
+  document.getElementById('ai-send-btn').disabled = true;
+
+  try {
+    var formData = new FormData();
+    formData.append('file', file);
+    formData.append('chatId', currentUser ? String(currentUser.id) : 'web');
+
+    var r = await fetch('/api/upload-file', { method: 'POST', body: formData });
+    var data = await r.json();
+    aiRemoveThinking();
+
+    if (data.ok) {
+      var msg = '✅ Файл **' + data.filename + '** проанализирован (' + data.chars + ' символов)\n\n' + data.reply;
+      aiAddMsg('ai', msg);
+      saveChatMsg('ai', msg);
+      // Refresh data from server
+      if (typeof loadData === 'function') setTimeout(loadData, 1500);
+    } else {
+      aiAddMsg('ai', '❌ Ошибка загрузки: ' + (data.error || 'Неизвестная ошибка'));
+    }
+  } catch(e) {
+    aiRemoveThinking();
+    aiAddMsg('ai', '❌ Ошибка: ' + e.message);
+  }
+  document.getElementById('ai-send-btn').disabled = false;
 }
 
 // Load saved API key
