@@ -12,7 +12,7 @@ docker compose up -d --build
 echo.
 echo ============================================
 echo   Done! Open in your browser:
-echo   http://localhost:8080
+echo   http://localhost:8300
 echo.
 echo   AI agent runs on port 8081
 echo   MySQL runs on port 3306

@@ -32,6 +32,8 @@ services:
       DB_USER: root
       DB_PASSWORD: ""
       DB_NAME: pmo_db
+      AGENT_HOST: agent
+      AGENT_PORT: 8081
     ports:
       - "8300:8080"
     volumes:

@@ -180,14 +180,42 @@ app.post('/api/admin/reset-password',async(req,res)=>{
   }catch(e){res.json({ok:false,error:e.message});}
 });
 
+// Proxy to AI agent (fallback if browser can't reach port 8081 directly)
+app.post('/api/ai',async(req,res)=>{
+  try{
+    const agentHost=process.env.AGENT_HOST||'localhost';
+    const agentPort=process.env.AGENT_PORT||'8081';
+    const body=JSON.stringify(req.body);
+    const result=await new Promise((resolve,reject)=>{
+      const r=require('http').request({hostname:agentHost,port:agentPort,path:'/agent',method:'POST',
+        headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}
+      },resp=>{
+        let buf='';
+        resp.on('data',c=>buf+=c);
+        resp.on('end',()=>{try{resolve(JSON.parse(buf));}catch(e){reject(e);}});
+      });
+      r.on('error',reject);
+      r.write(body);r.end();
+    });
+    res.json(result);
+  }catch(e){
+    res.json({ok:false,error:'Агент недоступен: '+e.message});
+  }
+});
+
 app.get('/{*splat}',(req,res)=>res.sendFile(path.join(DIR,'PMO_Control_Center.html')));
 
 function getIP(){
   const nets=os.networkInterfaces();
+  let fallback=null;
+  // Prefer 192.168.x.x (WiFi/LAN), avoid VPN (10.x, 172.x)
   for(const n of Object.keys(nets))
     for(const net of nets[n])
-      if(net.family==='IPv4'&&!net.internal)return net.address;
-  return 'localhost';
+      if(net.family==='IPv4'&&!net.internal){
+        if(net.address.startsWith('192.168.'))return net.address;
+        if(!fallback)fallback=net.address;
+      }
+  return fallback||'localhost';
 }
 
 connectDB().then(()=>{

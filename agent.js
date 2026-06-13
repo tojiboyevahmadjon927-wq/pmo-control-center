@@ -402,7 +402,7 @@ function telegramGetUpdates(token, offset) {
   return new Promise((resolve, reject) => {
     const req = https.request({
       hostname: 'api.telegram.org',
-      path: `/bot${token}/getUpdates?offset=${offset}&timeout=30&allowed_updates=["message"]`,
+      path: `/bot${token}/getUpdates?offset=${offset}&timeout=30&allowed_updates=%5B%22message%22%5D`,
       method: 'GET'
     }, res => {
       let body = '';
