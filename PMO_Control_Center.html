@@ -1561,9 +1561,8 @@ async function aiSend() {
   var apiKey = localStorage.getItem('ai_api_key') || '';
 
   try {
-    // Try agent.js (port 8081) first, fall back to /api/ai
-    var agentUrl = window.location.hostname + ':8081';
-    var r = await fetch('http://' + agentUrl + '/agent', {
+    // Use server proxy /api/ai (routes internally to agent container)
+    var r = await fetch('/api/ai', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ message: msg, context: ctx, apiKey: apiKey })
@@ -1615,16 +1614,6 @@ async function aiSend() {
       aiAddMsg('ai', '❌ Ошибка: ' + (data.error || 'Что-то пошло не так'));
     }
   } catch(e) {
-    // Agent.js not available, try built-in /api/ai
-    try {
-      var r2 = await fetch('/api/ai', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ message: msg, context: ctx, apiKey: apiKey })
-      });
-      var data2 = await r2.json();
-      aiRemoveThinking();
-      if (data2.ok) { aiAddMsg('ai', data2.reply); saveChatMsg('ai', data2.reply); document.getElementById('ai-send-btn').disabled = false; return; }
-    } catch(e2) {}
     aiRemoveThinking();
     aiAddMsg('ai', '⚠️ Нет связи с сервером. Убедись что сервер запущен.');
   }
