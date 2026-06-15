@@ -255,6 +255,8 @@ tbody td{padding:9px 10px;vertical-align:middle}
 /* TIME TRACKING */
 .time-bar{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-top:4px}
 .time-fill{height:100%;border-radius:4px;transition:width .3s}
+/* PANEL TASK ROW */
+.ptask-row:hover{background:var(--card2)!important}
 
 
 /* ======= AI AGENT ======= */
@@ -1014,7 +1016,7 @@ function buildTaskList(tasks){
   tasks.forEach(function(t){
     var pc={high:'#ef4444',medium:'#f59e0b',low:'#22c55e'}[t.priority]||'#8892a4';
     var isDone=t.status==='done';
-    html+='<div onclick="openTaskDetail('+t.id+')" style="display:flex;align-items:center;gap:8px;padding:8px 9px;border-bottom:1px solid #2e3347;cursor:pointer;border-radius:6px;transition:background .1s" onmouseover="this.style.background=\'#22263a\'" onmouseout="this.style.background=\'transparent\'">';
+    html+='<div onclick="openTaskDetail('+t.id+')" class="ptask-row" style="display:flex;align-items:center;gap:8px;padding:8px 9px;border-bottom:1px solid var(--border);cursor:pointer;border-radius:6px;transition:background .1s">';
     html+='<span style="color:'+(isDone?'#22c55e':'#8892a4')+'">'+(isDone?'✓':'○')+'</span>';
     html+='<div style="flex:1"><div style="font-size:11px;font-weight:600;'+(isDone?'text-decoration:line-through;color:#8892a4':'')+'">'+t.title+'</div>';
     html+='<div style="font-size:10px;color:#8892a4;margin-top:2px;display:flex;gap:8px"><span style="color:'+pc+'">●</span><span>👤 '+(t.owner||'—')+'</span>'+(t.deadline?'<span>'+t.deadline+'</span>':'')+'</div></div>';
