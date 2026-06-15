@@ -753,14 +753,39 @@ function renderNotifs(){
 
 // SUMMARY
 function renderSummary(){
-  var tot=projects.length,ok=0,risk=0,crit=0,bp=0,bf=0,pr=0,iss=0,tt=biTasks.length,td=0;
-  projects.forEach(function(p){if(p.status==='on_track')ok++;else if(p.status==='at_risk')risk++;else if(p.status==='critical')crit++;bp+=p.budgetPlan;bf+=p.budgetFact;pr+=p.progress;iss+=p.issues.length;});
-  biTasks.forEach(function(t){if(t.status==='done')td++;});
+  var tot=projects.length,ok=0,risk=0,crit=0,bp=0,bf=0,pr=0,iss=0;
+  var tt=biTasks.length,td=0,tip=0;
+  projects.forEach(function(p){
+    var s=p.status;
+    if(s==='on_track')ok++;else if(s==='at_risk')risk++;else if(s==='critical')crit++;
+    bp+=Number(p.budgetPlan)||0;
+    bf+=Number(p.budgetFact)||0;
+    pr+=Number(p.progress)||0;
+    iss+=(p.issues||[]).length;
+  });
+  biTasks.forEach(function(t){
+    if(t.status==='done')td++;
+    else if(t.status==='inprogress')tip++;
+  });
   pr=tot?Math.round(pr/tot):0;
+  var bpPct=bp>0?Math.round(bf/bp*100):0;
+  var overdue=biTasks.filter(function(t){return t.status!=='done'&&t.deadline&&new Date(t.deadline)<new Date();}).length;
   document.getElementById('sum-cards').innerHTML=
-    mksc('Продуктов','ca',tot,'')+mksc('В норме','cg',ok,'из '+tot)+mksc('Под риском','cy',risk,'')+mksc('Критично','cr',crit,'')+
-    mksc('Бюджет план','','$'+fmt(bp),'')+mksc('Факт','',('$'+fmt(bf)),bp?Math.round(bf/bp*100)+'%':'')+
-    mksc('Прогресс','',pr+'%','')+mksc('Задачи','cg',td+'/'+tt,'');
+    mksc('Продуктов','ca',tot,ok+' в норме')+
+    mksc('В норме','cg',ok,'из '+tot)+
+    mksc('Под риском','cy',risk,'')+
+    mksc('Критично','cr',crit,'')+
+    mksc('Бюджет план','',bp>0?fmtBudget(bp):'—','')+
+    mksc('Факт',bp>0?(bpPct>=80?'cg':bpPct>=50?'cy':'cr'):'',bp>0?fmtBudget(bf):'—',bp>0?bpPct+'% от плана':'')+
+    mksc('Прогресс',pr>=70?'cg':pr>=40?'cy':'cr',pr+'%','средний по продуктам')+
+    mksc('Задачи','',td+'/'+tt,(overdue?'<span style="color:#ef4444">⚠️ '+overdue+' просрочено</span>':'✓ в срок'));
+}
+function fmtBudget(n){
+  n=Number(n)||0;
+  if(n>=1000000000)return (n/1000000000).toFixed(1)+' млрд сум';
+  if(n>=1000000)return (n/1000000).toFixed(1)+' млн сум';
+  if(n>=1000)return (n/1000).toFixed(0)+'K сум';
+  return n+' сум';
 }
 function mksc(l,c,v,s){return '<div class="sc"><div class="lb">'+l+'</div><div class="vl '+(c||'')+'">'+v+'</div>'+(s?'<div class="sb">'+s+'</div>':'')+'</div>';}
 
@@ -768,11 +793,24 @@ function mksc(l,c,v,s){return '<div class="sc"><div class="lb">'+l+'</div><div c
 function renderNS(){
   document.getElementById('ns-grid').innerHTML=projects.map(function(p){
     var s=SMAP[p.status]||{};var sc=SCOL[p.stage]||'#4f6ef7';
-    return '<div class="nsc" style="border-left-color:'+sc+'"><div style="font-size:11px;color:#8892a4;margin-bottom:2px">'+p.name+'</div>'+
-      '<div style="font-size:13px;font-weight:700;color:#4f6ef7;margin-bottom:6px">⭐ '+p.northStar+'</div>'+
-      '<div style="display:flex;justify-content:space-between;align-items:center">'+
-      '<div class="pw" style="flex:1;margin-right:8px"><div class="pb"><div class="pf" style="width:'+p.progress+'%;background:'+pgc(p.progress)+'"></div></div><span style="font-size:10px;color:#8892a4">'+p.progress+'%</span></div>'+
-      '<span class="badge '+s.c+'" style="font-size:10px">'+s.l+'</span></div></div>';
+    var prog=Number(p.progress)||0;
+    var pt=biTasks.filter(function(t){return t.projectId===p.id;});
+    var ptd=pt.filter(function(t){return t.status==='done';}).length;
+    var pip=pt.filter(function(t){return t.status==='inprogress';}).length;
+    var overdue=pt.filter(function(t){return t.status!=='done'&&t.deadline&&new Date(t.deadline)<new Date();}).length;
+    return '<div class="nsc" style="border-left-color:'+sc+'">' +
+      '<div style="font-size:11px;color:#8892a4;margin-bottom:2px">'+p.name+'</div>' +
+      '<div style="font-size:13px;font-weight:700;color:#4f6ef7;margin-bottom:6px">⭐ '+p.northStar+'</div>' +
+      '<div class="pw" style="margin-bottom:5px"><div class="pb"><div class="pf" style="width:'+prog+'%;background:'+pgc(prog)+'"></div></div></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px">' +
+      '<div style="display:flex;gap:6px;font-size:10px;flex-wrap:wrap">' +
+        '<span style="color:'+pgc(prog)+'">'+prog+'%</span>' +
+        (pt.length?'<span style="color:#8892a4">📋 '+ptd+'/'+pt.length+' задач</span>':'') +
+        (pip?'<span style="color:#f59e0b">⚡'+pip+' в работе</span>':'') +
+        (overdue?'<span style="color:#ef4444">⚠️'+overdue+' просроч.</span>':'') +
+      '</div>' +
+      '<span class="badge '+s.c+'" style="font-size:10px">'+s.l+'</span>' +
+      '</div></div>';
   }).join('');
 }
 
@@ -780,12 +818,13 @@ function renderNS(){
 function renderCharts(){
   var names=projects.map(function(p){return p.name.length>12?p.name.slice(0,12)+'…':p.name;});
   dc('budget');
-  charts['budget']=new Chart(document.getElementById('ch-budget'),{type:'bar',data:{labels:names,datasets:[{label:'План',data:projects.map(function(p){return p.budgetPlan;}),backgroundColor:'#4f6ef744',borderColor:'#4f6ef7',borderWidth:1.5,borderRadius:3},{label:'Факт',data:projects.map(function(p){return p.budgetFact;}),backgroundColor:'#22c55e44',borderColor:'#22c55e',borderWidth:1.5,borderRadius:3}]},options:{responsive:true,plugins:{legend:{labels:{color:'#8892a4',font:{size:10}}}},scales:{x:{ticks:{color:'#8892a4',font:{size:9}},grid:{color:'#2e334722'}},y:{ticks:{color:'#8892a4',font:{size:9},callback:function(v){return '$'+fmt(v);}},grid:{color:'#2e334722'}}}}});
+  var hasBudget=projects.some(function(p){return (Number(p.budgetPlan)||0)>0||(Number(p.budgetFact)||0)>0;});
+  charts['budget']=new Chart(document.getElementById('ch-budget'),{type:'bar',data:{labels:names,datasets:[{label:'План',data:projects.map(function(p){return Number(p.budgetPlan)||0;}),backgroundColor:'#4f6ef744',borderColor:'#4f6ef7',borderWidth:1.5,borderRadius:3},{label:'Факт',data:projects.map(function(p){return Number(p.budgetFact)||0;}),backgroundColor:'#22c55e44',borderColor:'#22c55e',borderWidth:1.5,borderRadius:3}]},options:{responsive:true,plugins:{legend:{labels:{color:'#8892a4',font:{size:10}}},title:{display:!hasBudget,text:'Бюджеты не заданы — укажите план/факт в карточке продукта',color:'#8892a488',font:{size:10}}},scales:{x:{ticks:{color:'#8892a4',font:{size:9}},grid:{color:'#2e334722'}},y:{ticks:{color:'#8892a4',font:{size:9},callback:function(v){return fmtBudget(v);}},grid:{color:'#2e334722'}}}}});
   dc('status');
   var sc2={};projects.forEach(function(p){sc2[p.status]=(sc2[p.status]||0)+1;});
   charts['status']=new Chart(document.getElementById('ch-status'),{type:'doughnut',data:{labels:['В норме','Под риском','Критично','На паузе','Завершён'],datasets:[{data:[sc2.on_track||0,sc2.at_risk||0,sc2.critical||0,sc2.paused||0,sc2.done||0],backgroundColor:['#22c55e88','#f59e0b88','#ef444488','#6b728088','#60a5fa88'],borderColor:['#22c55e','#f59e0b','#ef4444','#6b7280','#60a5fa'],borderWidth:1.5}]},options:{responsive:true,plugins:{legend:{position:'right',labels:{color:'#8892a4',font:{size:10},padding:8}}}}});
   dc('progress');
-  charts['progress']=new Chart(document.getElementById('ch-progress'),{type:'bar',data:{labels:names,datasets:[{data:projects.map(function(p){return p.progress;}),backgroundColor:projects.map(function(p){return pgc(p.progress)+'88';}),borderColor:projects.map(function(p){return pgc(p.progress);}),borderWidth:1.5,borderRadius:3}]},options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false}},scales:{x:{min:0,max:100,ticks:{color:'#8892a4',font:{size:9},callback:function(v){return v+'%';}},grid:{color:'#2e334722'}},y:{ticks:{color:'#8892a4',font:{size:9}},grid:{color:'#2e334722'}}}}});
+  charts['progress']=new Chart(document.getElementById('ch-progress'),{type:'bar',data:{labels:names,datasets:[{data:projects.map(function(p){return Number(p.progress)||0;}),backgroundColor:projects.map(function(p){return pgc(Number(p.progress)||0)+'88';}),borderColor:projects.map(function(p){return pgc(Number(p.progress)||0);}),borderWidth:1.5,borderRadius:3}]},options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false}},scales:{x:{min:0,max:100,ticks:{color:'#8892a4',font:{size:9},callback:function(v){return v+'%';}},grid:{color:'#2e334722'}},y:{ticks:{color:'#8892a4',font:{size:9}},grid:{color:'#2e334722'}}}}});
   dc('stages');
   var stg={};projects.forEach(function(p){stg[p.stage]=(stg[p.stage]||0)+1;});
   charts['stages']=new Chart(document.getElementById('ch-stages'),{type:'pie',data:{labels:Object.keys(stg),datasets:[{data:Object.values(stg),backgroundColor:Object.keys(stg).map(function(s){return (SCOL[s]||'#4f6ef7')+'88';}),borderColor:Object.keys(stg).map(function(s){return SCOL[s]||'#4f6ef7';}),borderWidth:1.5}]},options:{responsive:true,plugins:{legend:{position:'right',labels:{color:'#8892a4',font:{size:10},padding:8}}}}});
@@ -813,7 +852,8 @@ function renderTable(){
   var html='';
   list.forEach(function(p){
     var s=SMAP[p.status]||{};var sc=SCOL[p.stage]||'#4f6ef7';
-    var bpf=p.budgetPlan?Math.round(p.budgetFact/p.budgetPlan*100):0;
+    var bpf=(Number(p.budgetPlan)||0)>0?Math.round((Number(p.budgetFact)||0)/(Number(p.budgetPlan))*100):0;
+    var prog=Number(p.progress)||0;
     var pt=biTasks.filter(function(t){return t.projectId===p.id;});
     var ptd=pt.filter(function(t){return t.status==='done';}).length;
     html+='<tr onclick="openDetail('+p.id+')">';
@@ -821,8 +861,8 @@ function renderTable(){
     html+='<td><span class="badge" style="background:'+sc+'22;color:'+sc+'">'+p.stage+'</span></td>';
     html+='<td><span class="badge '+s.c+'">'+s.l+'</span></td>';
     html+='<td><div style="display:flex;align-items:center;gap:6px"><div class="avatar" style="background:'+p.ownerColor+'">'+ini(p.owner)+'</div>'+p.owner+'</div></td>';
-    html+='<td><div class="pw"><div class="pb"><div class="pf" style="width:'+p.progress+'%;background:'+pgc(p.progress)+'"></div></div><span style="font-size:10px;color:#8892a4">'+p.progress+'%</span></div></td>';
-    html+='<td>$'+fmt(p.budgetFact)+'/'+fmt(p.budgetPlan)+'</td>';
+    html+='<td><div class="pw"><div class="pb"><div class="pf" style="width:'+prog+'%;background:'+pgc(prog)+'"></div></div><span style="font-size:10px;color:#8892a4">'+prog+'%</span></div></td>';
+    html+='<td>'+fmtBudget(p.budgetFact)+(p.budgetPlan>0?'<span style="color:#8892a4;font-size:9px"> / '+fmtBudget(p.budgetPlan)+'</span>':'')+'</td>';
     html+='<td>'+dl(p.deadline)+'</td>';
     html+='<td><span style="color:'+(ptd===pt.length&&pt.length?'#22c55e':'#8892a4')+'">'+ptd+'/'+pt.length+'</span></td>';
     html+='<td>'+(p.issues.length?'<span class="badge b-red">'+p.issues.length+'</span>':'<span style="color:#22c55e">✓</span>')+'</td></tr>';
