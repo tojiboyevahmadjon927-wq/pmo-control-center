@@ -32,13 +32,12 @@ services:
       DB_USER: root
       DB_PASSWORD: ""
       DB_NAME: pmo_db
-      AGENT_HOST: pmo_agent
-      AGENT_PORT: 8081
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
     ports:
       - "8300:8080"
     volumes:
       - pmo_app_data:/app/data
-      - ./agent_config.json:/app/agent_config.json
 
   agent:
     build: .

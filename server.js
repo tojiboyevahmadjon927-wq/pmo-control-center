@@ -229,9 +229,9 @@ function groqRequest(key,model,messages,cb){
 }
 async function callAI(message,systemPrompt){
   const cfg=loadAgentCfg();
-  const key=cfg.groq_api_key||cfg.claude_api_key||'';
-  if(!key)throw new Error('API ключ не настроен в agent_config.json');
-  const model=cfg.groq_model||'llama-3.3-70b-versatile';
+  const key=process.env.GROQ_API_KEY||cfg.groq_api_key||cfg.claude_api_key||'';
+  if(!key)throw new Error('API ключ не настроен');
+  const model=process.env.GROQ_MODEL||cfg.groq_model||'llama-3.3-70b-versatile';
   const messages=[{role:'system',content:systemPrompt},{role:'user',content:message}];
   return new Promise((resolve,reject)=>{
     groqRequest(key,model,messages,(err,data)=>{
