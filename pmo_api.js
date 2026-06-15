@@ -269,7 +269,7 @@
   }
 
   // Critical data → immediate sync (must not lose data on refresh)
-  ['saveUser', 'deleteUser', 'saveTask', 'saveProject'].forEach(patchImmediate);
+  ['saveUser', 'deleteUser', 'saveTask', 'saveProject', 'saveSubtask'].forEach(patchImmediate);
 
   // Frequent/low-risk operations → debounced
   ['deleteProject', 'deleteTask',
