@@ -957,7 +957,7 @@ function renderAdminTrash(){
       var p=projects.find(function(x){return x.id===t.projectId;});
       html+='<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--card2);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">';
       html+='<div style="flex:1"><div style="font-size:12px;font-weight:700;text-decoration:line-through;color:var(--muted)">'+t.title+'</div>';
-      html+='<div style="font-size:10px;color:var(--muted);margin-top:2px">'+(p?'📁 '+p.name+'  ':'')+(t.deletedAt?'удалено '+new Date(t.deletedAt).toLocaleDateString('ru'):'')+'</div></div>';
+      html+='<div style="font-size:10px;color:var(--muted);margin-top:2px">'+(p?'📁 '+p.name+'  ':'')+( t.deletedAt?'удалено '+new Date(t.deletedAt).toLocaleDateString('ru'):'')+'</div></div>';
       html+='<button class="btn btn-green btn-sm" onclick="restoreTask('+t.id+')">↩ Восстановить</button>';
       if(isAdmin)html+='<button class="btn btn-red btn-sm" onclick="permDeleteTask('+t.id+')">✕ Навсегда</button>';
       html+='</div>';
@@ -1086,7 +1086,7 @@ function renderTable(){
     var prog=Number(p.progress)||0;
     var pt=activeTasks().filter(function(t){return t.projectId===p.id;});
     var ptd=pt.filter(function(t){return t.status==='done';}).length;
-    html+='<tr onclick="openDetail('+p.id+')">';
+    html+='<tr onclick="openDetail('+p.id+')'+'">';
     html+='<td><strong>'+p.name+'</strong><br><span style="font-size:10px;color:#8892a4">'+p.northStar+'</span></td>';
     html+='<td><span class="badge" style="background:'+sc+'22;color:'+sc+'">'+p.stage+'</span></td>';
     html+='<td><span class="badge '+s.c+'">'+s.l+'</span></td>';
@@ -1462,9 +1462,9 @@ function openTaskDetail(id){
     var sdone=s.done===true;
     var spct=s.checklist&&s.checklist.length?Math.round(s.checklist.filter(function(c){return c.done;}).length/s.checklist.length*100):0;
     right+='<div style="background:var(--card2);border-radius:8px;padding:11px 13px;margin-bottom:8px;border-left:3px solid '+(sdone?'var(--green)':'var(--accent)')+';border:1px solid var(--border);'+(sdone?'opacity:.85':'')+'">';
-    right+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
-    right+='<button onclick="toggleSubtask('+t.id+','+s.id+')" style="background:'+(sdone?'var(--green)':'var(--card)')+';border:2px solid '+(sdone?'var(--green)':'var(--border)')+';border-radius:50%;width:20px;height:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;padding:0;color:#fff;transition:all .15s">'+(sdone?'✓':'')+'</button>';
-    right+='<span style="font-size:12px;font-weight:700;flex:1;margin:0 8px;'+(sdone?'text-decoration:line-through;color:var(--muted)':'')+'">'+s.title+'</span>';
+    right+='<div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">';
+    right+='<button onclick="toggleSubtask('+t.id+','+s.id+')" title="'+(sdone?'Снять отметку':'Отметить выполненным')+'" style="background:'+(sdone?'var(--green)':'transparent')+';border:2px solid '+(sdone?'var(--green)':'var(--border)')+';border-radius:50%;width:22px;height:22px;min-width:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;padding:0;color:#fff;transition:all .15s;line-height:1">'+(sdone?'✓':'')+'</button>';
+    right+='<span style="font-size:12px;font-weight:700;flex:1;'+(sdone?'text-decoration:line-through;color:var(--muted)':'')+'">'+s.title+'</span>';
     right+='<div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm" onclick="openEditSubtask('+t.id+','+s.id+')" style="padding:2px 7px">✏️</button><button class="btn btn-red btn-sm" onclick="deleteSubtask('+t.id+','+s.id+')" style="padding:2px 7px">🗑</button></div></div>';
     right+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">';
     if(s.owner)right+='<span style="font-size:10px;color:var(--muted)">👤 '+s.owner+'</span>';
@@ -1801,4 +1801,448 @@ function renderWorkload(){
   activeTasks().forEach(function(t){
     var k=t.owner||'—';
     if(!data[k])data[k]={todo:0,inprogress:0,done:0,total:0};
-    if(t.
+    if(t.status==='done')data[k].done++;
+    else if(t.status==='inprogress')data[k].inprogress++;
+    else data[k].todo++;
+    data[k].total++;
+  });
+  var sorted=Object.keys(data).sort(function(a,b){return data[b].total-data[a].total;});
+  var max=sorted.reduce(function(m,k){return Math.max(m,data[k].total);},1);
+  var html=sorted.map(function(name){
+    var d=data[name];
+    var tw=Math.round(d.todo/max*100),iw=Math.round(d.inprogress/max*100),dw=Math.round(d.done/max*100);
+    return '<div class="wl-bar-wrap"><span class="wl-name" title="'+name+'">'+name.split(' ')[0]+'</span>'+
+      '<div class="wl-bar">'+
+      '<div class="wl-seg" style="width:'+dw+'%;background:#22c55e" title="Готово: '+d.done+'"></div>'+
+      '<div class="wl-seg" style="width:'+iw+'%;background:#f59e0b" title="В работе: '+d.inprogress+'"></div>'+
+      '<div class="wl-seg" style="width:'+tw+'%;background:#4f6ef722" title="К выполнению: '+d.todo+'"></div>'+
+      '</div><span class="wl-count">'+d.total+'</span></div>';
+  }).join('');
+  html+='<div style="display:flex;gap:10px;margin-top:6px"><span style="font-size:10px;color:#22c55e">■ Готово</span><span style="font-size:10px;color:#f59e0b">■ В работе</span><span style="font-size:10px;color:var(--muted)">■ К выполнению</span></div>';
+  cont.innerHTML=html||'<div class="empty">Нет задач</div>';
+}
+
+// ===== GANTT CHART =====
+var calDate=new Date();
+function populateGanttFilters(){
+  var ps=document.getElementById('gantt-proj-filter');var ss=document.getElementById('gantt-sprint-filter');
+  if(ps){var cv=ps.value;ps.innerHTML='<option value="">Все продукты</option>'+projects.map(function(p){return '<option value="'+p.id+'">'+p.name+'</option>';}).join('');ps.value=cv;}
+  if(ss){var cv2=ss.value;ss.innerHTML='<option value="">Все спринты</option>'+getSprints().map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('');ss.value=cv2;}
+}
+function renderGantt(){
+  var cont=document.getElementById('gantt-container');if(!cont)return;
+  var pid=+(document.getElementById('gantt-proj-filter')||{}).value||0;
+  var spr=(document.getElementById('gantt-sprint-filter')||{}).value||'';
+  var tasks=activeTasks().filter(function(t){
+    return t.deadline&&(!pid||t.projectId===pid)&&(!spr||t.sprint===spr);
+  });
+  if(!tasks.length){cont.innerHTML='<div class="empty">Нет задач с дедлайном</div>';return;}
+  var today=new Date();today.setHours(0,0,0,0);
+  var allDates=tasks.map(function(t){return new Date(t.deadline);});
+  var minD=new Date(Math.min.apply(null,allDates));
+  var maxD=new Date(Math.max.apply(null,allDates));
+  minD.setDate(minD.getDate()-3);maxD.setDate(maxD.getDate()+3);
+  var totalDays=Math.round((maxD-minD)/86400000)||1;
+  var CELL=Math.max(20,Math.min(40,Math.floor((cont.clientWidth||800)/totalDays)));
+  var totalW=totalDays*CELL;
+  // Build month headers
+  var months=[],d=new Date(minD);
+  while(d<=maxD){
+    var m=d.getMonth(),y=d.getFullYear(),cnt=0;
+    var dn=new Date(d);
+    while(dn<=maxD&&dn.getMonth()===m){cnt++;dn.setDate(dn.getDate()+1);}
+    months.push({label:['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'][m]+' '+y,days:cnt});
+    d=dn;
+  }
+  var headerHtml='<div class="gantt-header"><div class="gantt-header-label">Задача</div><div class="gantt-header-dates">';
+  months.forEach(function(m){headerHtml+='<div class="gantt-month" style="width:'+(m.days*CELL)+'px;min-width:'+(m.days*CELL)+'px">'+m.label+'</div>';});
+  headerHtml+='</div></div>';
+  // Today line position
+  var todayOffset=Math.round((today-minD)/86400000)*CELL;
+  var todayLine='<div class="gantt-today-line" style="left:'+(200+todayOffset)+'px"></div>';
+  // Task rows
+  var scMap={todo:'#6b7280',inprogress:'#f59e0b',done:'#22c55e',pending_approval:'#7c3aed'};
+  var rowsHtml='';
+  // Group by project
+  var byProj={};
+  tasks.forEach(function(t){var k=t.projectId||0;if(!byProj[k])byProj[k]=[];byProj[k].push(t);});
+  Object.keys(byProj).forEach(function(pid2){
+    var p=projects.find(function(x){return x.id===+pid2;});
+    if(p)rowsHtml+='<div class="gantt-row" style="background:'+p.ownerColor+'11"><div class="gantt-label" style="font-weight:700;color:'+p.ownerColor+'">📁 '+p.name+'</div><div class="gantt-bar-wrap" style="width:'+totalW+'px"></div></div>';
+    byProj[pid2].forEach(function(t){
+      var dl2=new Date(t.deadline);dl2.setHours(0,0,0,0);
+      var startOff=Math.round((dl2-minD)/86400000)*CELL;
+      var barW=Math.max(CELL*2,CELL*2);
+      var color=scMap[t.status]||'#4f6ef7';
+      rowsHtml+='<div class="gantt-row"><div class="gantt-label" title="'+t.title+'">'+t.title+'</div>'+
+        '<div class="gantt-bar-wrap" style="position:relative;width:'+totalW+'px;min-width:'+totalW+'px">'+
+        '<div class="gantt-bar" style="left:'+startOff+'px;width:'+barW+'px;background:'+color+'" onclick="openTaskDetail('+t.id+')" title="'+t.title+' — '+t.deadline+'">'+
+        (barW>40?t.owner||'':'')+'</div>'+
+        (t.status!=='done'&&dl2<today?'<div style="position:absolute;left:'+(startOff+barW/2-10)+'px;top:0;font-size:10px;color:#ef4444" title="Просрочено!">⚠️</div>':'')+
+        '</div></div>';
+    });
+  });
+  cont.innerHTML='<div style="position:relative">'+headerHtml+'<div style="position:relative">'+todayLine+rowsHtml+'</div></div>';
+}
+function ganttScrollToday(){
+  var cont=document.getElementById('gantt-container');if(cont){var tl=cont.querySelector('.gantt-today-line');if(tl){var off=parseInt(tl.style.left)-200;cont.scrollLeft=Math.max(0,off-100);}}
+}
+
+// ===== CALENDAR =====
+function populateCalendarFilters(){
+  var sel=document.getElementById('cal-proj-filter');
+  if(sel){var cv=sel.value;sel.innerHTML='<option value="">Все продукты</option>'+projects.map(function(p){return '<option value="'+p.id+'">'+p.name+'</option>';}).join('');sel.value=cv;}
+}
+function calPrev(){calDate.setMonth(calDate.getMonth()-1);renderCalendar();}
+function calNext(){calDate.setMonth(calDate.getMonth()+1);renderCalendar();}
+function calToday(){calDate=new Date();renderCalendar();}
+function renderCalendar(){
+  var lbl=document.getElementById('cal-month-label');
+  var grid=document.getElementById('cal-grid');
+  if(!grid)return;
+  var y=calDate.getFullYear(),m=calDate.getMonth();
+  var mNames=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+  if(lbl)lbl.textContent=mNames[m]+' '+y;
+  var pid=+(document.getElementById('cal-proj-filter')||{}).value||0;
+  // Build task map by date
+  var taskMap={};
+  activeTasks().filter(function(t){return t.deadline&&(!pid||t.projectId===+pid);}).forEach(function(t){
+    var k=t.deadline.slice(0,10);
+    if(!taskMap[k])taskMap[k]=[];taskMap[k].push(t);
+  });
+  var today=new Date();today.setHours(0,0,0,0);
+  var first=new Date(y,m,1);
+  var startDow=(first.getDay()+6)%7; // Mon=0
+  var daysInMonth=new Date(y,m+1,0).getDate();
+  var cells='';
+  // Leading empty cells
+  for(var i=0;i<startDow;i++){var prevDay=new Date(y,m,1-startDow+i);cells+='<div class="cal-day other-month"><div class="cal-day-num">'+prevDay.getDate()+'</div></div>';}
+  for(var d=1;d<=daysInMonth;d++){
+    var dd=new Date(y,m,d);dd.setHours(0,0,0,0);
+    var isToday=dd.getTime()===today.getTime();
+    var key=y+'-'+(m+1<10?'0':'')+(m+1)+'-'+(d<10?'0':'')+d;
+    var dayTasks=taskMap[key]||[];
+    var pc={high:'#ef444488',medium:'#f59e0b88',low:'#22c55e88'};
+    var dots=dayTasks.slice(0,3).map(function(t){
+      return '<span class="cal-task-dot" style="border-left:3px solid '+(pc[t.priority]||'#4f6ef7')+';background:var(--card2)" onclick="openTaskDetail('+t.id+')" title="'+t.title+'">'+t.title+'</span>';
+    }).join('');
+    if(dayTasks.length>3)dots+='<span style="font-size:9px;color:var(--muted)">+ещё '+(dayTasks.length-3)+'</span>';
+    cells+='<div class="cal-day'+(isToday?' today':'')+'"><div class="cal-day-num">'+d+(dayTasks.length?' <span style="color:#4f6ef7;font-size:10px">●'+dayTasks.length+'</span>':'')+'</div>'+dots+'</div>';
+  }
+  // Trailing
+  var total=startDow+daysInMonth;var trailing=(7-total%7)%7;
+  for(var j=0;j<trailing;j++){cells+='<div class="cal-day other-month"><div class="cal-day-num">'+(j+1)+'</div></div>';}
+  grid.innerHTML=cells;
+}
+
+
+// TABS
+function setTab(tab){activeTab=tab;ALL_TABS.forEach(function(t){var el=document.getElementById('tab-'+t);if(el)el.style.display=t===tab?'block':'none';});document.querySelectorAll('.tab').forEach(function(el){el.classList.remove('active');if(el.getAttribute('onclick')==="setTab('"+tab+"')")el.classList.add('active');});if(tab==='overview'){renderCharts();renderWorkload();}if(tab==='kanban')renderKanban();if(tab==='plans'){populatePlanSel();renderPlans();}if(tab==='tasks'){populateTaskFilters();renderTasks();}if(tab==='collab'){populateTaskFilters();renderCollab();}if(tab==='gantt'){populateGanttFilters();renderGantt();}if(tab==='calendar'){populateCalendarFilters();renderCalendar();}if(tab==='admin')setAdminTab(activeAdminTab);}
+
+function renderAll(){renderNotifs();renderSummary();renderNS();renderTable();updateOwnerFilter();populatePlanSel();populateTaskFilters();if(activeTab==='overview'){renderCharts();renderWorkload();}if(activeTab==='kanban')renderKanban();if(activeTab==='plans')renderPlans();if(activeTab==='tasks')renderTasks();if(activeTab==='collab')renderCollab();if(activeTab==='gantt')renderGantt();if(activeTab==='calendar')renderCalendar();if(activeTab==='admin')setAdminTab(activeAdminTab);}
+
+document.getElementById('today-date').textContent=new Date().toLocaleDateString('ru',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+initLogin();
+
+// ---- THEME TOGGLE ----
+(function(){
+  var t=localStorage.getItem('pmo_theme')||'light';
+  document.documentElement.setAttribute('data-theme',t);
+  var btn=document.getElementById('theme-toggle-btn');
+  if(btn) btn.textContent=t==='dark'?'☀️':'🌙';
+})();
+
+function toggleTheme(){
+  var cur=document.documentElement.getAttribute('data-theme');
+  var next=cur==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',next);
+  localStorage.setItem('pmo_theme',next);
+  var btn=document.getElementById('theme-toggle-btn');
+  if(btn) btn.textContent=next==='dark'?'☀️':'🌙';
+  // Re-render charts with new theme colors
+  if(typeof renderCharts==='function' && (activeTab==='overview'||!activeTab)) renderCharts();
+}
+</script>
+<script src="pmo_api.js?v=5"></script>
+
+
+
+<!-- AI AGENT -->
+<button class="ai-bubble" onclick="toggleAI()" title="ИИ-агент PMO">🤖<span class="ai-badge" id="ai-badge">1</span></button>
+<div class="ai-panel" id="ai-panel">
+  <div class="ai-panel-h">
+    <div>
+      <div class="ai-panel-title">🤖 ИИ-агент PMO</div>
+      <div class="ai-panel-sub" id="ai-source-label">Подключение к агенту...</div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center"><button onclick="clearChatHistory()" title="Очистить историю" style="background:none;border:none;cursor:pointer;color:#ffffff88;font-size:13px;padding:4px 6px;border-radius:6px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#ffffff88'">🗑</button><button class="ai-close" onclick="toggleAI()">✕</button></div>
+  </div>
+  <div class="ai-messages" id="ai-messages"></div>
+  <div class="ai-quickbtns" id="ai-quickbtns">
+    <button class="ai-qbtn" onclick="aiAsk('Сводка по всем продуктам')">📊 Сводка</button>
+    <button class="ai-qbtn" onclick="aiAsk('Какие задачи просрочены?')">🔴 Просрочки</button>
+    <button class="ai-qbtn" onclick="aiAsk('Кто самый загруженный?')">👥 Нагрузка</button>
+    <button class="ai-qbtn" onclick="aiAsk('Какие есть риски?')">⚠️ Риски</button>
+    <button class="ai-qbtn" onclick="aiAsk('Дедлайны на этой неделе')">📅 Неделя</button>
+    <button class="ai-qbtn" onclick="aiAsk('Что умеешь?')">❓ Помощь</button>
+  </div>
+  <div class="ai-input-row">
+    <button class="ai-send" title="Загрузить файл проекта (.docx, .txt)" onclick="document.getElementById('ai-file-inp').click()" style="background:var(--card2);border:1px solid var(--border);color:var(--muted);font-size:16px;">📎</button>
+    <input type="file" id="ai-file-inp" accept=".docx,.txt,.md,.csv" style="display:none" onchange="aiUploadFile(this)">
+    <textarea class="ai-inp" id="ai-inp" placeholder="Спроси что угодно..." rows="1"
+      onkeydown="if(event.keyCode===13&&!event.shiftKey){event.preventDefault();aiSend()}"
+      oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+    <button class="ai-send" id="ai-send-btn" onclick="aiSend()">➤</button>
+  </div>
+  <div class="ai-key-row">
+    <span style="font-size:10px;color:var(--muted);white-space:nowrap">🔑 Claude API:</span>
+    <input class="ai-key-inp" id="ai-api-key" type="password" placeholder="sk-ant-... (Claude) или gsk_... (Groq бесплатно)"
+      value="" onchange="saveAiKey(this.value)">
+    <button class="ai-qbtn" onclick="aiAsk('Что умеешь?')" style="flex-shrink:0">Тест</button>
+  </div>
+</div>
+
+<script>
+// ===== AI AGENT =====
+var aiOpen = false;
+var aiHistory = [];
+var aiHistoryLoaded = false;
+
+function toggleAI() {
+  aiOpen = !aiOpen;
+  var panel = document.getElementById('ai-panel');
+  panel.classList.toggle('open', aiOpen);
+  if (aiOpen) {
+    document.getElementById('ai-badge').style.display = 'none';
+    if (!aiHistoryLoaded) loadChatHistory();
+    setTimeout(function(){ document.getElementById('ai-inp').focus(); }, 200);
+  }
+}
+
+async function loadChatHistory() {
+  aiHistoryLoaded = true;
+  if (!currentUser) { aiGreet(); return; }
+  try {
+    var r = await fetch('/api/chat/history?userId=' + currentUser.id + '&limit=100');
+    var data = await r.json();
+    if (data.ok && data.messages && data.messages.length) {
+      data.messages.forEach(function(m) {
+        aiAddMsg(m.role, m.content, true);
+        aiHistory.push({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.content });
+      });
+      var msgs = document.getElementById('ai-messages');
+      msgs.scrollTop = msgs.scrollHeight;
+    } else {
+      aiGreet();
+    }
+  } catch(e) { aiGreet(); }
+}
+
+async function clearChatHistory() {
+  if (!currentUser) return;
+  if (!confirm('Очистить историю чата?')) return;
+  try {
+    await fetch('/api/chat/history?userId=' + currentUser.id, { method: 'DELETE' });
+    aiHistory = [];
+    aiHistoryLoaded = false;
+    document.getElementById('ai-messages').innerHTML = '';
+    aiGreet();
+  } catch(e) {}
+}
+
+async function saveChatMsg(role, content) {
+  if (!currentUser) return;
+  try {
+    await fetch('/api/chat/save', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ userId: currentUser.id, role: role, content: content })
+    });
+  } catch(e) {}
+}
+
+function aiGreet() {
+  var name = currentUser ? currentUser.name.split(' ')[0] : 'Коллега';
+  aiAddMsg('ai', '👋 Привет, ' + name + '! Я ИИ-агент PMO.\n\nМогу помочь с:\n• 📊 Анализом проектов\n• ⚠️ Рисками и просрочками\n• 👥 Загрузкой команды\n• ➕ Созданием задач\n\nПросто спроси!');
+}
+
+function aiAddMsg(role, text) {
+  var msgs = document.getElementById('ai-messages');
+  var isAI = role === 'ai';
+  var avatar = isAI ? '🤖' : ini(currentUser ? currentUser.name : 'U');
+  var avatarStyle = isAI ? '' : 'style="background:' + ucolor(currentUser ? currentUser.id : 1) + '"';
+  var div = document.createElement('div');
+  div.className = 'ai-msg ' + role;
+  // Convert **bold** markdown
+  var formatted = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  div.innerHTML = '<div class="ai-msg-avatar" ' + avatarStyle + '>' + avatar + '</div>' +
+    '<div><div class="ai-msg-text">' + formatted + '</div>' +
+    (isAI ? '<div class="ai-source" id="ai-src-' + Date.now() + '"></div>' : '') + '</div>';
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}
+
+function aiShowThinking() {
+  var msgs = document.getElementById('ai-messages');
+  var div = document.createElement('div');
+  div.className = 'ai-msg ai';
+  div.id = 'ai-thinking';
+  div.innerHTML = '<div class="ai-msg-avatar">🤖</div>' +
+    '<div class="ai-msg-text ai-thinking"><span></span><span></span><span></span></div>';
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function aiRemoveThinking() {
+  var el = document.getElementById('ai-thinking');
+  if (el) el.remove();
+}
+
+function aiAsk(q) {
+  document.getElementById('ai-inp').value = q;
+  aiSend();
+}
+
+async function aiSend() {
+  var inp = document.getElementById('ai-inp');
+  var msg = inp.value.trim();
+  if (!msg) return;
+  inp.value = '';
+  inp.style.height = 'auto';
+  document.getElementById('ai-send-btn').disabled = true;
+
+  aiAddMsg('user', msg);
+  aiHistory.push({ role: 'user', content: msg });
+  saveChatMsg('user', msg);
+  aiShowThinking();
+
+  // Build context from current data
+  var ctx = {
+    projects: projects.map(function(p){ return {
+      id:p.id, name:p.name, status:p.status, progress:p.progress,
+      owner:p.owner, deadline:p.deadline, northStar:p.northStar,
+      kpis:p.kpis, issues:p.issues
+    };}),
+    tasks: biTasks.map(function(t){ return {
+      id:t.id, title:t.title, owner:t.owner, status:t.status,
+      priority:t.priority, deadline:t.deadline, projectId:t.projectId, sprint:t.sprint
+    };}),
+    users: users.map(function(u){ return {id:u.id, name:u.name, pos:u.pos, product:u.product, role:u.role};}),
+    currentUser: {name:currentUser.name, role:currentUser.role}
+  };
+
+  var apiKey = localStorage.getItem('ai_api_key') || '';
+
+  try {
+    // Use server proxy /api/ai (routes internally to agent container)
+    var r = await fetch('/api/ai', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ message: msg, context: ctx, apiKey: apiKey })
+    });
+    var data = await r.json();
+    aiRemoveThinking();
+
+    if (data.ok) {
+      var reply = data.reply;
+      aiAddMsg('ai', reply);
+      saveChatMsg('ai', reply);
+      document.getElementById('ai-source-label').textContent = '✨ Claude AI Agent';
+
+      // Handle actions (create_task, update_task)
+      var jsonMatch = reply.match(/\{[^}]*"action"[^}]*\}/);
+      if (jsonMatch) {
+        try {
+          var action = JSON.parse(jsonMatch[0]);
+          if (action.action === 'create_task') {
+            setTimeout(function(){
+              if (confirm('ИИ предлагает создать задачу: "' + action.title + '"\nСоздать?')) {
+                var newId = Math.max.apply(null, [0].concat(biTasks.map(function(t){return t.id;}))) + 1;
+                biTasks.push({
+                  id: newId, title: action.title,
+                  owner: action.owner || (currentUser ? currentUser.name : ''),
+                  priority: action.priority || 'medium',
+                  deadline: action.deadline || '',
+                  projectId: action.projectId || null,
+                  status: 'todo', sprint: '', goal: '', kpis: [], issues: [], desc: '',
+                  comments: [], checklist: []
+                });
+                renderTasks(); renderSummary();
+                if (typeof syncToServer === 'function') syncToServer();
+                aiAddMsg('ai', '✅ Задача "' + action.title + '" создана!');
+              }
+            }, 300);
+          } else if (action.action === 'update_task') {
+            var t = biTasks.find(function(x){return x.id === action.taskId;});
+            if (t) {
+              t.status = action.status;
+              renderTasks(); renderSummary();
+              if (typeof syncToServer === 'function') syncToServer();
+              aiAddMsg('ai', '✅ Статус задачи обновлён: ' + action.status);
+            }
+          }
+        } catch(e) {}
+      }
+    } else {
+      aiAddMsg('ai', '❌ Ошибка: ' + (data.error || 'Что-то пошло не так'));
+    }
+  } catch(e) {
+    aiRemoveThinking();
+    aiAddMsg('ai', '⚠️ Нет связи с сервером. Убедись что сервер запущен.');
+  }
+
+  document.getElementById('ai-send-btn').disabled = false;
+}
+
+function saveAiKey(key) {
+  localStorage.setItem('ai_api_key', key);
+}
+
+async function aiUploadFile(input) {
+  var file = input.files[0];
+  if (!file) return;
+  input.value = '';
+
+  // Show user message
+  aiAddMsg('user', '📎 Загружаю файл: ' + file.name + '...');
+  aiShowThinking();
+  document.getElementById('ai-send-btn').disabled = true;
+
+  try {
+    var formData = new FormData();
+    formData.append('file', file);
+    formData.append('chatId', currentUser ? String(currentUser.id) : 'web');
+
+    var r = await fetch('/api/upload-file', { method: 'POST', body: formData });
+    var data = await r.json();
+    aiRemoveThinking();
+
+    if (data.ok) {
+      var msg = '✅ Файл **' + data.filename + '** проанализирован (' + data.chars + ' символов)\n\n' + data.reply;
+      aiAddMsg('ai', msg);
+      saveChatMsg('ai', msg);
+      // Refresh data from server
+      if (typeof loadData === 'function') setTimeout(loadData, 1500);
+    } else {
+      aiAddMsg('ai', '❌ Ошибка загрузки: ' + (data.error || 'Неизвестная ошибка'));
+    }
+  } catch(e) {
+    aiRemoveThinking();
+    aiAddMsg('ai', '❌ Ошибка: ' + e.message);
+  }
+  document.getElementById('ai-send-btn').disabled = false;
+}
+
+// Load saved API key
+(function(){
+  var saved = localStorage.getItem('ai_api_key');
+  if (saved) {
+    var el = document.getElementById('ai-api-key');
+    if (el) el.value = saved;
+    document.getElementById('ai-source-label').textContent = '✨ Claude AI готов';
+  }
+})();
+</script>
+
+</body>
+</html>
