@@ -7,7 +7,7 @@
   const DATA_KEY     = 'pmo_data_cache';   // full data backup in localStorage
 
   // ---- CACHE VERSION CHECK (clears old cache if tabs changed) ----
-  var CACHE_VERSION = '3.0';
+  var CACHE_VERSION = '3.1';
   if (localStorage.getItem('pmo_cache_ver') !== CACHE_VERSION) {
     localStorage.removeItem('pmo_data_cache');
     localStorage.setItem('pmo_cache_ver', CACHE_VERSION);

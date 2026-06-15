@@ -28,6 +28,9 @@ async function ensureChatTable(){
       INDEX idx_user (userId)
     )`);
   }catch(e){console.log('  [DB] chat_history:',e.message);}
+  // Add subtasks column if missing
+  try{await db.execute('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS subtasks JSON NULL DEFAULT NULL');}
+  catch(e){console.log('  [DB] subtasks col:',e.message);}
 }
 async function seedDB(){
   try{
@@ -101,7 +104,7 @@ app.get('/api/data',async(req,res)=>{
       const[requests]=await db.execute('SELECT * FROM collab_requests');
       users.forEach(u=>{u.access=pj(u.access,[]);});
       projects.forEach(p=>{p.kpis=pj(p.kpis,[]);p.issues=pj(p.issues,[]);p.monthlyPlan=pj(p.monthlyPlan,[]);p.desc=p.description||'';});
-      tasks.forEach(t=>{t.kpis=pj(t.kpis,[]);t.issues=pj(t.issues,[]);t.desc=t.description||'';});
+      tasks.forEach(t=>{t.kpis=pj(t.kpis,[]);t.issues=pj(t.issues,[]);t.subtasks=pj(t.subtasks,[]);t.desc=t.description||'';});
       return res.json({ok:true,users,projects,tasks,collabRequests:requests});
     }
     const d=lf();
@@ -127,8 +130,8 @@ app.post('/api/data',async(req,res)=>{
       }
       for(const t of(tasks||[])){
         await db.execute(
-          'INSERT INTO tasks(id,projectId,title,owner,deadline,status,priority,sprint,goal,progress,kpis,issues,description,reqId)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),owner=VALUES(owner),deadline=VALUES(deadline),status=VALUES(status),priority=VALUES(priority),sprint=VALUES(sprint),goal=VALUES(goal),progress=VALUES(progress),kpis=VALUES(kpis),issues=VALUES(issues),description=VALUES(description)',
-          [t.id,t.projectId||null,t.title,t.owner||'',t.deadline||null,t.status||'todo',t.priority||'medium',t.sprint||'',t.goal||'',t.progress||null,JSON.stringify(t.kpis||[]),JSON.stringify(t.issues||[]),t.desc||'',t.reqId||null]
+          'INSERT INTO tasks(id,projectId,title,owner,deadline,status,priority,sprint,goal,progress,kpis,issues,description,reqId,subtasks)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),owner=VALUES(owner),deadline=VALUES(deadline),status=VALUES(status),priority=VALUES(priority),sprint=VALUES(sprint),goal=VALUES(goal),progress=VALUES(progress),kpis=VALUES(kpis),issues=VALUES(issues),description=VALUES(description),subtasks=VALUES(subtasks)',
+          [t.id,t.projectId||null,t.title,t.owner||'',t.deadline||null,t.status||'todo',t.priority||'medium',t.sprint||'',t.goal||'',t.progress||null,JSON.stringify(t.kpis||[]),JSON.stringify(t.issues||[]),t.desc||'',t.reqId||null,JSON.stringify(t.subtasks||[])]
         );
       }
       for(const r of(collabRequests||[])){

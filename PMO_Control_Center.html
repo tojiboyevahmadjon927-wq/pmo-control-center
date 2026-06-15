@@ -504,6 +504,23 @@ tbody td{padding:9px 10px;vertical-align:middle}
   </div>
 </div>
 
+<!-- SUBTASK MODAL -->
+<div class="modal" id="subtask-modal">
+  <div class="mbox" style="width:520px">
+    <h2 id="subtask-modal-title">➕ Новая подзадача</h2>
+    <input type="hidden" id="stm-task-id">
+    <input type="hidden" id="stm-sub-id">
+    <div class="fg">
+      <div class="fi full"><label>Название подзадачи *</label><input id="stm-title" placeholder="Что нужно сделать?"></div>
+      <div class="fi"><label>Ответственный</label><select id="stm-owner"></select></div>
+      <div class="fi"><label>Дедлайн</label><input id="stm-dl" type="date"></div>
+      <div class="fi full"><label>KPI</label><input id="stm-kpi" placeholder="Например: Подключить 10 клиентов"></div>
+      <div class="fi full"><label>Метрика (на сколько улучшит проект)</label><input id="stm-metric" placeholder="Например: +15% к выручке или +50 абонентов"></div>
+    </div>
+    <div class="fact"><button class="btn btn-ghost" onclick="closeModal('subtask-modal')">Отмена</button><button class="btn btn-primary" onclick="saveSubtask()">Сохранить</button></div>
+  </div>
+</div>
+
 <!-- COLLAB REQUEST MODAL -->
 <div class="modal" id="req-modal">
   <div class="mbox" style="width:540px">
@@ -1047,6 +1064,44 @@ function openTaskDetail(id){
     html+='<div style="display:flex;gap:5px"><input id="cl-inp-'+t.id+'" placeholder="Новый пункт..." style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 8px;font-size:11px;outline:none" onkeydown="if(event.keyCode===13)addChecklist('+t.id+')"><button class="btn btn-ghost btn-sm" onclick="addChecklist('+t.id+')">+</button></div>';
     html+='</div>';
   }
+  // SUBTASKS
+  var subs=t.subtasks||[];
+  var subsDone=subs.filter(function(s){return (s.checklist||[]).length&&(s.checklist||[]).every(function(c){return c.done;});}).length;
+  html+='<div class="psec"><h3>Подзадачи '+(subs.length?'('+subsDone+'/'+subs.length+')':'')+'</h3>';
+  if(subs.length){
+    subs.forEach(function(s){
+      var sdone=(s.checklist||[]).length&&(s.checklist||[]).every(function(c){return c.done;});
+      var spct=s.checklist&&s.checklist.length?Math.round(s.checklist.filter(function(c){return c.done;}).length/s.checklist.length*100):0;
+      html+='<div style="background:var(--card2);border-radius:8px;padding:10px 12px;margin-bottom:8px;border-left:3px solid '+(sdone?'#22c55e':'#4f6ef7')+'">';
+      html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+      html+='<span style="font-size:12px;font-weight:700;color:var(--text)">'+(sdone?'✅ ':'🔲 ')+s.title+'</span>';
+      html+='<div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm" onclick="openEditSubtask('+t.id+','+s.id+')" style="padding:2px 6px;font-size:10px">✏️</button><button class="btn btn-red btn-sm" onclick="deleteSubtask('+t.id+','+s.id+')" style="padding:2px 6px;font-size:10px">🗑</button></div>';
+      html+='</div>';
+      html+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">';
+      if(s.owner)html+='<span style="font-size:10px;color:#8892a4">👤 '+s.owner+'</span>';
+      if(s.deadline)html+='<span style="font-size:10px;color:#8892a4">📅 '+s.deadline+'</span>';
+      if(s.kpi)html+='<span style="font-size:10px;color:#4f6ef7">🎯 '+s.kpi+'</span>';
+      if(s.metric)html+='<span style="font-size:10px;color:#22c55e">📈 '+s.metric+'</span>';
+      html+='</div>';
+      if(s.checklist&&s.checklist.length){
+        html+='<div style="margin-bottom:6px">';
+        html+='<div style="font-size:10px;color:#8892a4;margin-bottom:4px">Чеклист ('+spct+'%)</div>';
+        html+='<div style="background:var(--bg);border-radius:6px;padding:6px 8px">';
+        s.checklist.forEach(function(c,ci){
+          html+='<div class="cl-item"><div class="cl-cb'+(c.done?' done':'')+'" onclick="toggleSubtaskChecklist('+t.id+','+s.id+','+ci+')">'+(c.done?'✓':'')+'</div>';
+          html+='<span class="cl-text'+(c.done?' done':'')+'">'+c.text+'</span>';
+          html+='<button onclick="removeSubtaskChecklist('+t.id+','+s.id+','+ci+')" style="background:none;border:none;color:#8892a4;cursor:pointer;font-size:11px">✕</button></div>';
+        });
+        html+='</div>';
+        if(s.checklist.length>1){html+='<div class="time-bar" style="margin-top:5px"><div class="time-fill" style="width:'+spct+'%;background:'+(spct===100?'#22c55e':'#4f6ef7')+'"></div></div>';}
+        html+='</div>';
+      }
+      html+='<div style="display:flex;gap:4px;margin-top:6px"><input id="stcl-'+t.id+'-'+s.id+'" placeholder="Добавить пункт..." style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:4px 7px;font-size:10px;outline:none" onkeydown="if(event.keyCode===13)addSubtaskChecklist('+t.id+','+s.id+')"><button class="btn btn-ghost btn-sm" onclick="addSubtaskChecklist('+t.id+','+s.id+')" style="padding:2px 8px;font-size:11px">+</button></div>';
+      html+='</div>';
+    });
+  }
+  html+='<button class="btn btn-ghost btn-sm" onclick="openAddSubtask('+t.id+')" style="margin-top:4px;width:100%;justify-content:center">+ Добавить подзадачу</button>';
+  html+='</div>';
   // COMMENTS
   var comments=t.comments||[];
   html+='<div class="psec"><h3>Комментарии ('+comments.length+')</h3>';
@@ -1096,6 +1151,80 @@ function saveTask(){
   closeModal('task-modal');renderTasks();populateTaskFilters();renderSummary();renderNotifs();
 }
 function deleteTask(id){if(!confirm('Удалить задачу?'))return;biTasks=biTasks.filter(function(t){return t.id!==id;});renderTasks();renderSummary();}
+
+// SUBTASKS
+function openAddSubtask(taskId){
+  document.getElementById('subtask-modal-title').textContent='➕ Новая подзадача';
+  document.getElementById('stm-task-id').value=taskId;
+  document.getElementById('stm-sub-id').value='';
+  ['stm-title','stm-kpi','stm-metric'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('stm-dl').value='';
+  var sel=document.getElementById('stm-owner');
+  sel.innerHTML=users.map(function(u){return '<option value="'+u.name+'">'+u.name+'</option>';}).join('');
+  document.getElementById('subtask-modal').classList.add('open');
+}
+function openEditSubtask(taskId,subId){
+  var t=biTasks.find(function(x){return x.id===taskId;});if(!t)return;
+  var s=(t.subtasks||[]).find(function(x){return x.id===subId;});if(!s)return;
+  document.getElementById('subtask-modal-title').textContent='✏️ Редактировать подзадачу';
+  document.getElementById('stm-task-id').value=taskId;
+  document.getElementById('stm-sub-id').value=subId;
+  document.getElementById('stm-title').value=s.title||'';
+  document.getElementById('stm-dl').value=s.deadline||'';
+  document.getElementById('stm-kpi').value=s.kpi||'';
+  document.getElementById('stm-metric').value=s.metric||'';
+  var sel=document.getElementById('stm-owner');
+  sel.innerHTML=users.map(function(u){return '<option value="'+u.name+'">'+u.name+'</option>';}).join('');
+  sel.value=s.owner||'';
+  document.getElementById('subtask-modal').classList.add('open');
+}
+function saveSubtask(){
+  var title=document.getElementById('stm-title').value.trim();
+  if(!title){alert('Введите название подзадачи');return;}
+  var taskId=+document.getElementById('stm-task-id').value;
+  var subId=+document.getElementById('stm-sub-id').value||0;
+  var t=biTasks.find(function(x){return x.id===taskId;});if(!t)return;
+  if(!t.subtasks)t.subtasks=[];
+  var data={title:title,owner:document.getElementById('stm-owner').value,deadline:document.getElementById('stm-dl').value,kpi:document.getElementById('stm-kpi').value,metric:document.getElementById('stm-metric').value};
+  if(subId){
+    var s=t.subtasks.find(function(x){return x.id===subId;});
+    if(s)Object.assign(s,data);
+  }else{
+    data.id=Date.now();
+    data.checklist=[];
+    t.subtasks.push(data);
+  }
+  closeModal('subtask-modal');
+  openTaskDetail(taskId);
+  if(typeof syncToServer==='function')syncToServer();
+}
+function deleteSubtask(taskId,subId){
+  if(!confirm('Удалить подзадачу?'))return;
+  var t=biTasks.find(function(x){return x.id===taskId;});if(!t)return;
+  t.subtasks=(t.subtasks||[]).filter(function(s){return s.id!==subId;});
+  openTaskDetail(taskId);if(typeof syncToServer==='function')syncToServer();
+}
+function addSubtaskChecklist(taskId,subId){
+  var inp=document.getElementById('stcl-'+taskId+'-'+subId);
+  if(!inp||!inp.value.trim())return;
+  var t=biTasks.find(function(x){return x.id===taskId;});if(!t)return;
+  var s=(t.subtasks||[]).find(function(x){return x.id===subId;});if(!s)return;
+  if(!s.checklist)s.checklist=[];
+  s.checklist.push({text:inp.value.trim(),done:false});
+  openTaskDetail(taskId);if(typeof syncToServer==='function')syncToServer();
+}
+function removeSubtaskChecklist(taskId,subId,idx){
+  var t=biTasks.find(function(x){return x.id===taskId;});if(!t)return;
+  var s=(t.subtasks||[]).find(function(x){return x.id===subId;});if(!s||!s.checklist)return;
+  s.checklist.splice(idx,1);
+  openTaskDetail(taskId);if(typeof syncToServer==='function')syncToServer();
+}
+function toggleSubtaskChecklist(taskId,subId,idx){
+  var t=biTasks.find(function(x){return x.id===taskId;});if(!t)return;
+  var s=(t.subtasks||[]).find(function(x){return x.id===subId;});if(!s||!s.checklist)return;
+  s.checklist[idx].done=!s.checklist[idx].done;
+  openTaskDetail(taskId);if(typeof syncToServer==='function')syncToServer();
+}
 
 // ADMIN
 function setAdminTab(tab){activeAdminTab=tab;document.querySelectorAll('.atab').forEach(function(el,i){el.classList.toggle('active',['users','products','system','reports'][i]===tab);});['users','products','system','reports'].forEach(function(t){var el=document.getElementById('atab-'+t);if(el)el.style.display=t===tab?'block':'none';});if(tab==='users')renderAdminUsers();else if(tab==='products')renderAdminProducts();else if(tab==='system')renderAdminSystem();else if(tab==='reports')renderAdminReports();}
@@ -1390,7 +1519,7 @@ function renderAll(){renderNotifs();renderSummary();renderNS();renderTable();upd
 document.getElementById('today-date').textContent=new Date().toLocaleDateString('ru',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 initLogin();
 </script>
-<script src="pmo_api.js?v=4"></script>
+<script src="pmo_api.js?v=5"></script>
 
 
 
