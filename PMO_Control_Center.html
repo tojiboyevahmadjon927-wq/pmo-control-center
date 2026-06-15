@@ -731,6 +731,74 @@ function dln(d){return Math.round((new Date(d)-new Date())/86400000);}
 function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
 function ucolor(uid){return ACOLS[(uid||1)%ACOLS.length];}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
+
+// ============================================================
+// DRAFT AUTO-SAVE SYSTEM
+// ============================================================
+var _draftTimers={};
+
+function draftSave(draftKey, fieldIds){
+  clearTimeout(_draftTimers[draftKey]);
+  _draftTimers[draftKey]=setTimeout(function(){
+    var data={};
+    fieldIds.forEach(function(fid){
+      var el=document.getElementById(fid);
+      if(el)data[fid]=el.value;
+    });
+    try{localStorage.setItem(draftKey,JSON.stringify(data));}catch(e){}
+  },300);
+}
+
+function draftRestore(draftKey, fieldIds){
+  try{
+    var saved=JSON.parse(localStorage.getItem(draftKey));
+    if(!saved)return false;
+    var hasData=false;
+    fieldIds.forEach(function(fid){
+      if(saved[fid]!==undefined&&saved[fid]!==''){
+        var el=document.getElementById(fid);
+        if(el){el.value=saved[fid];hasData=true;}
+      }
+    });
+    return hasData;
+  }catch(e){return false;}
+}
+
+function draftClear(draftKey){
+  try{localStorage.removeItem(draftKey);}catch(e){}
+}
+
+function draftBind(draftKey, fieldIds){
+  fieldIds.forEach(function(fid){
+    var el=document.getElementById(fid);
+    if(el)el.addEventListener('input',function(){draftSave(draftKey,fieldIds);});
+  });
+}
+
+var TASK_FIELDS=['tm-title','tm-dl','tm-status','tm-prio','tm-sprint','tm-goal','tm-prog','tm-kpi','tm-issues','tm-desc','tm-hours-plan','tm-hours-fact'];
+var PROJ_FIELDS=['pm-name','pm-stage','pm-status','pm-owner','pm-ns','pm-bp','pm-bf','pm-dl','pm-prog','pm-yearly','pm-kpi','pm-issues','pm-desc'];
+
+// Bind listeners once on DOMContentLoaded
+document.addEventListener('DOMContentLoaded',function(){
+  // Bind after a short delay to ensure elements exist
+  setTimeout(function(){
+    draftBind('pmo_draft_task', TASK_FIELDS);
+    draftBind('pmo_draft_proj', PROJ_FIELDS);
+  },500);
+});
+
+function showDraftBanner(modalId, draftKey, fieldIds){
+  var existing=document.getElementById('draft-banner-'+modalId);
+  if(existing)existing.remove();
+  var mbox=document.querySelector('#'+modalId+' .mbox');
+  if(!mbox)return;
+  var banner=document.createElement('div');
+  banner.id='draft-banner-'+modalId;
+  banner.style.cssText='background:#fef9c3;border:1px solid #fde047;border-radius:7px;padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#854d0e';
+  banner.innerHTML='💾 Найден несохранённый черновик. <div style="display:flex;gap:6px"><button onclick="draftRestore(\''+draftKey+'\','+JSON.stringify(fieldIds)+');this.closest(\'[id^=draft-banner]\').remove()" style="background:#854d0e;color:#fff;border:none;border-radius:5px;padding:3px 9px;cursor:pointer;font-size:11px">Восстановить</button><button onclick="draftClear(\''+draftKey+'\');this.closest(\'[id^=draft-banner]\').remove()" style="background:transparent;border:1px solid #854d0e;color:#854d0e;border-radius:5px;padding:3px 9px;cursor:pointer;font-size:11px">Удалить</button></div>';
+  mbox.insertBefore(banner,mbox.firstChild);
+}
+// ============================================================
 function closePanel(){document.getElementById('overlay').classList.remove('open');document.getElementById('side-panel').classList.remove('open');try{localStorage.removeItem('pmo_panel_state');}catch(e){}}
 
 // LOGIN
@@ -1354,7 +1422,19 @@ function openTaskDetail(id){
 }
 
 // PROJECT CRUD
-function openAddModal(){editProjId=null;document.getElementById('proj-modal-title').textContent='➕ Новый продукт';['pm-name','pm-owner','pm-ns','pm-kpi','pm-issues','pm-desc','pm-yearly'].forEach(function(id){document.getElementById(id).value='';});['pm-bp','pm-bf','pm-prog'].forEach(function(id){document.getElementById(id).value='';});document.getElementById('pm-dl').value='';document.getElementById('proj-modal').classList.add('open');}
+function openAddModal(){
+  editProjId=null;
+  document.getElementById('proj-modal-title').textContent='➕ Новый продукт';
+  ['pm-name','pm-owner','pm-ns','pm-kpi','pm-issues','pm-desc','pm-yearly'].forEach(function(id){document.getElementById(id).value='';});
+  ['pm-bp','pm-bf','pm-prog'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('pm-dl').value='';
+  document.getElementById('proj-modal').classList.add('open');
+  // Check for draft
+  setTimeout(function(){
+    draftBind('pmo_draft_proj',PROJ_FIELDS);
+    try{var d=JSON.parse(localStorage.getItem('pmo_draft_proj'));if(d&&Object.values(d).some(function(v){return v&&v!==''}))showDraftBanner('proj-modal','pmo_draft_proj',PROJ_FIELDS);}catch(e){}
+  },50);
+}
 function openEditModal(id){var p=projects.find(function(x){return x.id===id;});if(!p)return;editProjId=id;document.getElementById('proj-modal-title').textContent='✏️ Редактировать';document.getElementById('pm-name').value=p.name;document.getElementById('pm-stage').value=p.stage;document.getElementById('pm-status').value=p.status;document.getElementById('pm-owner').value=p.owner;document.getElementById('pm-ns').value=p.northStar;document.getElementById('pm-bp').value=p.budgetPlan;document.getElementById('pm-bf').value=p.budgetFact;document.getElementById('pm-dl').value=p.deadline;document.getElementById('pm-prog').value=p.progress;document.getElementById('pm-yearly').value=p.yearlyGoal||'';document.getElementById('pm-kpi').value=(p.kpis||[]).map(function(k){return k.name+': план '+k.plan+', факт '+k.fact;}).join('\n');document.getElementById('pm-issues').value=(p.issues||[]).map(function(i){return i.title;}).join('\n');document.getElementById('pm-desc').value=p.desc||'';document.getElementById('proj-modal').classList.add('open');closePanel();}
 function saveProject(){
   var name=document.getElementById('pm-name').value.trim();if(!name){alert('Введите название');return;}
@@ -1363,12 +1443,29 @@ function saveProject(){
   var data={name:name,stage:document.getElementById('pm-stage').value,status:document.getElementById('pm-status').value,owner:document.getElementById('pm-owner').value||'—',northStar:document.getElementById('pm-ns').value||'—',budgetPlan:+document.getElementById('pm-bp').value||0,budgetFact:+document.getElementById('pm-bf').value||0,deadline:document.getElementById('pm-dl').value||'—',progress:Math.min(100,Math.max(0,+document.getElementById('pm-prog').value||0)),yearlyGoal:document.getElementById('pm-yearly').value,kpis:kpis,issues:issues,desc:document.getElementById('pm-desc').value};
   if(editProjId){var idx=projects.findIndex(function(x){return x.id===editProjId;});if(idx>=0)projects[idx]=Object.assign({},projects[idx],data);}
   else{var nid=Math.max.apply(null,[0].concat(projects.map(function(p){return p.id;})))+1;projects.push(Object.assign({id:nid,ownerColor:ACOLS[nid%ACOLS.length],monthlyPlan:MONTHS.map(function(m){return{month:m,goal:null,actual:null,notes:''};})},data));}
+  draftClear('pmo_draft_proj');
   closeModal('proj-modal');renderAll();
 }
 function deleteProject(id){if(!confirm('Удалить продукт?'))return;projects=projects.filter(function(p){return p.id!==id;});biTasks=biTasks.filter(function(t){return t.projectId!==id;});closePanel();renderAll();}
 
 // TASK CRUD
-function openAddTaskModal(){editTaskId=null;document.getElementById('task-modal-title').textContent='➕ Новая задача';['tm-title','tm-owner-sel','tm-sprint','tm-goal','tm-kpi','tm-issues','tm-desc'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});document.getElementById('tm-dl').value='';document.getElementById('tm-prog').value='';document.getElementById('tm-status').value='todo';document.getElementById('tm-prio').value='medium';populateTaskFilters();document.getElementById('task-modal').classList.add('open');}
+function openAddTaskModal(projId){
+  editTaskId=null;
+  document.getElementById('task-modal-title').textContent='➕ Новая задача';
+  ['tm-title','tm-owner-sel','tm-sprint','tm-goal','tm-kpi','tm-issues','tm-desc'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('tm-dl').value='';
+  document.getElementById('tm-prog').value='';
+  document.getElementById('tm-status').value='todo';
+  document.getElementById('tm-prio').value='medium';
+  populateTaskFilters();
+  if(projId)document.getElementById('tm-proj').value=projId;
+  document.getElementById('task-modal').classList.add('open');
+  // Check for draft
+  setTimeout(function(){
+    draftBind('pmo_draft_task',TASK_FIELDS);
+    try{var d=JSON.parse(localStorage.getItem('pmo_draft_task'));if(d&&Object.values(d).some(function(v){return v&&v!==''}))showDraftBanner('task-modal','pmo_draft_task',TASK_FIELDS);}catch(e){}
+  },50);
+}
 function editTask(id){var t=biTasks.find(function(x){return x.id===id;});if(!t)return;editTaskId=id;document.getElementById('task-modal-title').textContent='✏️ Редактировать';document.getElementById('tm-title').value=t.title;document.getElementById('tm-dl').value=t.deadline||'';document.getElementById('tm-status').value=t.status;document.getElementById('tm-prio').value=t.priority||'medium';document.getElementById('tm-sprint').value=t.sprint||'';document.getElementById('tm-goal').value=t.goal||'';document.getElementById('tm-prog').value=t.progress!=null?t.progress:'';document.getElementById('tm-kpi').value=(t.kpis||[]).map(function(k){return k.name+': план '+k.plan+', факт '+k.fact;}).join('\n');document.getElementById('tm-issues').value=(t.issues||[]).map(function(i){return i.title;}).join('\n');document.getElementById('tm-desc').value=t.desc||'';var hpE=document.getElementById('tm-hours-plan'),hfE=document.getElementById('tm-hours-fact');if(hpE)hpE.value=t.hoursPlanned||'';if(hfE)hfE.value=t.hoursActual||'';populateTaskFilters();document.getElementById('tm-proj').value=t.projectId;document.getElementById('tm-owner-sel').value=t.owner;document.getElementById('task-modal').classList.add('open');}
 function saveTask(){
   var title=document.getElementById('tm-title').value.trim();if(!title){alert('Введите название');return;}
@@ -1379,6 +1476,7 @@ function saveTask(){
   var data={title:title,projectId:+document.getElementById('tm-proj').value,owner:document.getElementById('tm-owner-sel').value,deadline:document.getElementById('tm-dl').value,status:document.getElementById('tm-status').value,priority:document.getElementById('tm-prio').value,sprint:document.getElementById('tm-sprint').value,goal:document.getElementById('tm-goal').value,progress:pv!==''?Math.min(100,Math.max(0,+pv)):null,kpis:kpis,issues:issues,desc:document.getElementById('tm-desc').value,hoursPlanned:hpEl&&hpEl.value?+hpEl.value:null,hoursActual:hfEl&&hfEl.value?+hfEl.value:null};
   if(editTaskId){var t=biTasks.find(function(x){return x.id===editTaskId;});if(t)Object.assign(t,data);}
   else{biTasks.push(Object.assign({id:Math.max.apply(null,[0].concat(biTasks.map(function(t){return t.id;})))+1,comments:[],checklist:[]},data));}
+  draftClear('pmo_draft_task');
   closeModal('task-modal');renderTasks();populateTaskFilters();renderSummary();renderNotifs();
 }
 function deleteTask(id){if(!confirm('Удалить задачу?'))return;biTasks=biTasks.filter(function(t){return t.id!==id;});renderTasks();renderSummary();}
