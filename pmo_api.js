@@ -49,7 +49,18 @@
     if (data.ok) {
       if (data.users         && data.users.length)    users          = data.users;
       if (data.projects      && data.projects.length) projects       = data.projects;
-      if (data.tasks         && data.tasks.length)    biTasks        = data.tasks;
+      // Only overwrite tasks if server has >= local count (prevents losing tasks created before sync)
+      if (data.tasks && data.tasks.length >= biTasks.length) {
+        biTasks = data.tasks;
+      } else if (data.tasks && data.tasks.length > 0 && biTasks.length > data.tasks.length) {
+        // Merge: server + any local-only tasks not yet synced
+        var serverIds = new Set(data.tasks.map(function(t){ return t.id; }));
+        var localOnly = biTasks.filter(function(t){ return !serverIds.has(t.id); });
+        biTasks = data.tasks.concat(localOnly);
+        console.log('[API] Merged', localOnly.length, 'local-only tasks with server data');
+      } else if (data.tasks) {
+        biTasks = data.tasks;
+      }
       if (data.collabRequests)                        collabRequests = data.collabRequests;
       saveLocalCache(); // keep local cache in sync with server
       console.log('[API] Loaded from server');
@@ -257,11 +268,11 @@
     };
   }
 
-  // User management → immediate (critical: must not lose data)
-  ['saveUser', 'deleteUser'].forEach(patchImmediate);
+  // Critical data → immediate sync (must not lose data on refresh)
+  ['saveUser', 'deleteUser', 'saveTask', 'saveProject'].forEach(patchImmediate);
 
-  // Everything else → debounced (frequent updates ok)
-  ['saveProject', 'deleteProject', 'saveTask', 'deleteTask',
+  // Frequent/low-risk operations → debounced
+  ['deleteProject', 'deleteTask',
    'toggleTask', 'approveReq', 'rejectReq', 'startReq',
    'doneReq', 'deleteReq', 'savePlan', 'changeStage',
    'saveRequest'].forEach(patchDebounced);
