@@ -122,22 +122,27 @@ tbody td{padding:9px 10px;vertical-align:middle}
 .kct{background:var(--border);border-radius:20px;padding:1px 6px;font-size:10px}
 .stage-sel{background:var(--card);border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:10px;padding:2px 5px;outline:none;cursor:pointer;margin-top:5px;width:100%}
 .stage-sel:focus{border-color:var(--accent)}
-/* PANEL */
+/* PANEL — FULLSCREEN */
 .overlay{position:fixed;inset:0;background:#00000055;z-index:200;display:none}
-.overlay.open{display:block}
-.panel{position:fixed;right:0;top:0;bottom:0;width:540px;background:var(--card);border-left:1px solid var(--border);z-index:201;overflow-y:auto;transform:translateX(100%);transition:transform .25s;box-shadow:var(--shadow-md)}
+.overlay.open{display:none}/* panel is fullscreen, no dim needed */
+.panel{position:fixed;inset:0;background:var(--bg);z-index:201;overflow:hidden;transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column}
 .panel.open{transform:translateX(0)}
-.panel-h{padding:15px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--card);z-index:1}
-.panel-t{font-size:13px;font-weight:700}
-.xbtn{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:3px 6px;border-radius:5px}
+.panel-h{padding:14px 28px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--topbar);flex-shrink:0;box-shadow:var(--shadow)}
+.panel-t{font-size:15px;font-weight:700}
+.xbtn{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:4px 9px;border-radius:7px;line-height:1}
 .xbtn:hover{color:var(--text);background:var(--card2)}
-.panel-b{padding:18px}
-.psec{margin-bottom:18px}
-.psec h3{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:8px;font-weight:600}
+/* PANEL 2-COLUMN GRID */
+.panel-b{display:grid;grid-template-columns:360px 1fr;flex:1;overflow:hidden}
+.panel-col{overflow-y:auto;padding:22px 24px;height:100%}
+.panel-col-left{background:var(--card);border-right:1px solid var(--border)}
+.panel-col-right{background:var(--bg)}
+@media(max-width:900px){.panel-b{grid-template-columns:1fr}.panel-col-left{border-right:none;border-bottom:1px solid var(--border)}}
+.psec{margin-bottom:20px}
+.psec h3{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:10px;font-weight:700}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.kv{background:var(--card2);border-radius:7px;padding:9px 11px;border:1px solid var(--border)}
-.kv .k{font-size:10px;color:var(--muted);margin-bottom:2px}
-.kv .v{font-size:12px;font-weight:600}
+.kv{background:var(--card2);border-radius:7px;padding:10px 13px;border:1px solid var(--border)}
+.kv .k{font-size:10px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px}
+.kv .v{font-size:13px;font-weight:600}
 .iss{background:#fff5f5;border-radius:7px;padding:8px 11px;margin-bottom:5px;border-left:3px solid var(--red)}
 [data-theme="dark"] .iss{background:var(--card2)}
 .iss .it{font-size:11px;font-weight:600;margin-bottom:1px}
@@ -518,7 +523,13 @@ tbody td{padding:9px 10px;vertical-align:middle}
 <!-- SIDE PANEL -->
 <div class="overlay" id="overlay" onclick="closePanel()"></div>
 <div class="panel" id="side-panel">
-  <div class="panel-h"><span class="panel-t" id="panel-title"></span><button class="xbtn" onclick="closePanel()">✕</button></div>
+  <div class="panel-h">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button class="xbtn" onclick="closePanel()" title="Закрыть">←</button>
+      <span class="panel-t" id="panel-title"></span>
+    </div>
+    <button class="xbtn" onclick="closePanel()" title="Закрыть">✕</button>
+  </div>
   <div class="panel-b" id="panel-body"></div>
 </div>
 
@@ -1201,41 +1212,50 @@ function saveRequest(){
 // DETAIL PANEL
 function openDetail(id){
   var p=projects.find(function(x){return x.id===id;});if(!p)return;
-  var s=SMAP[p.status]||{};var sc=SCOL[p.stage]||'#4f6ef7';
-  var bpf=p.budgetPlan?Math.round(p.budgetFact/p.budgetPlan*100):0;
+  var s=SMAP[p.status]||{};var sc=SCOL[p.stage]||'#2563eb';
+  var bpf=p.budgetPlan?Math.round((Number(p.budgetFact)||0)/(Number(p.budgetPlan))*100):0;
   var pt=biTasks.filter(function(t){return t.projectId===p.id;});
   var ptd=pt.filter(function(t){return t.status==='done';}).length;
   var canEdit=currentUser&&(currentUser.role==='ceo'||p.owner===currentUser.name);
-  document.getElementById('panel-title').textContent=p.name;
+  document.getElementById('panel-title').innerHTML='<span style="color:var(--accent)">📁</span> '+p.name;
   var stageOpts=STAGES.map(function(st){return '<option value="'+st+'"'+(st===p.stage?' selected':'')+'>'+st+'</option>';}).join('');
-  var html='<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap"><span class="badge '+s.c+'">'+s.l+'</span><span class="badge" style="background:'+sc+'22;color:'+sc+'">'+p.stage+'</span></div>';
-  if(canEdit)html+='<div style="margin-bottom:14px;display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#8892a4">Сменить этап:</span><select onchange="changeStage('+p.id+',this.value)" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 8px;font-size:11px;outline:none">'+stageOpts+'</select></div>';
-  if(p.desc)html+='<div style="color:#8892a4;font-size:11px;margin-bottom:14px">'+p.desc+'</div>';
-  html+='<div class="psec"><h3>Ключевые данные</h3><div class="g2">';
-  html+='<div class="kv"><div class="k">North Star</div><div class="v" style="color:#4f6ef7">⭐ '+p.northStar+'</div></div>';
-  html+='<div class="kv"><div class="k">Ответственный</div><div class="v"><div style="display:flex;align-items:center;gap:5px"><div class="avatar" style="background:'+p.ownerColor+'">'+ini(p.owner)+'</div>'+p.owner+'</div></div></div>';
-  html+='<div class="kv"><div class="k">Дедлайн</div><div class="v">'+p.deadline+' '+dl(p.deadline)+'</div></div>';
-  html+='<div class="kv"><div class="k">Прогресс</div><div class="v"><div class="pw"><div class="pb" style="height:6px"><div class="pf" style="width:'+p.progress+'%;background:'+pgc(p.progress)+'"></div></div>'+p.progress+'%</div></div></div>';
-  html+='<div class="kv"><div class="k">Бюджет план</div><div class="v">$'+fmt(p.budgetPlan)+'</div></div>';
-  html+='<div class="kv"><div class="k">Бюджет факт</div><div class="v" style="color:'+(bpf>110?'#ef4444':'#22c55e')+'">$'+fmt(p.budgetFact)+' ('+bpf+'%)</div></div>';
-  html+='</div></div>';
-  if(p.kpis&&p.kpis.length){html+='<div class="psec"><h3>KPI — план / факт</h3>';p.kpis.forEach(function(k){html+='<div class="mrow"><span style="font-size:11px">'+k.name+'</span><div class="mvs"><div class="mv"><div class="k">ПЛАН</div><div class="v">'+k.plan+'</div></div><div class="mv"><div class="k">ФАКТ</div><div class="v '+(k.ok===true?'pfg':k.ok===false?'pfb':'')+'">'+k.fact+'</div></div></div></div>';});html+='</div>';}
+
+  // LEFT COLUMN — info, kpis, issues, edit
+  var left='';
+  left+='<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap"><span class="badge '+s.c+'">'+s.l+'</span><span class="badge" style="background:'+sc+'22;color:'+sc+'">'+p.stage+'</span></div>';
+  if(p.desc)left+='<div style="color:var(--muted);font-size:12px;margin-bottom:16px;line-height:1.5">'+p.desc+'</div>';
+  if(canEdit)left+='<div style="margin-bottom:16px;display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--muted)">Этап:</span><select onchange="changeStage('+p.id+',this.value)" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 9px;font-size:11px;outline:none;flex:1">'+stageOpts+'</select></div>';
+  left+='<div class="psec"><h3>Ключевые данные</h3><div class="g2">';
+  left+='<div class="kv" style="grid-column:1/-1"><div class="k">North Star</div><div class="v" style="color:var(--accent);font-size:15px">⭐ '+p.northStar+'</div></div>';
+  left+='<div class="kv"><div class="k">Ответственный</div><div class="v" style="display:flex;align-items:center;gap:6px"><div class="avatar" style="background:'+p.ownerColor+'">'+ini(p.owner)+'</div>'+p.owner+'</div></div>';
+  left+='<div class="kv"><div class="k">Дедлайн</div><div class="v">'+dl(p.deadline)+'<br><span style="font-size:10px;color:var(--muted)">'+p.deadline+'</span></div></div>';
+  left+='<div class="kv"><div class="k">Прогресс</div><div class="v"><div class="pw"><div class="pb" style="height:8px"><div class="pf" style="width:'+p.progress+'%;background:'+pgc(Number(p.progress)||0)+'"></div></div><b>'+p.progress+'%</b></div></div></div>';
+  left+='<div class="kv"><div class="k">Бюджет план</div><div class="v">'+fmtBudget(p.budgetPlan)+'</div></div>';
+  left+='<div class="kv"><div class="k">Бюджет факт</div><div class="v" style="color:'+(bpf>100?'var(--red)':'var(--green)')+'">'+fmtBudget(p.budgetFact)+'<span style="font-size:10px;font-weight:400"> ('+bpf+'%)</span></div></div>';
+  left+='</div></div>';
+  if(p.kpis&&p.kpis.length){left+='<div class="psec"><h3>KPI — план / факт</h3>';p.kpis.forEach(function(k){left+='<div class="mrow"><span style="font-size:12px">'+k.name+'</span><div class="mvs"><div class="mv"><div class="k">ПЛАН</div><div class="v">'+k.plan+'</div></div><div class="mv"><div class="k">ФАКТ</div><div class="v '+(k.ok===true?'pfg':k.ok===false?'pfb':'')+'">'+k.fact+'</div></div></div></div>';});left+='</div>';}
+  if(p.issues&&p.issues.length){left+='<div class="psec"><h3>⚠️ Проблемы</h3>';p.issues.forEach(function(i){left+='<div class="iss" style="border-color:'+(i.severity==='high'?'var(--red)':'var(--yellow)')+'"><div class="it">'+(i.severity==='high'?'🔴':'⚠️')+' '+i.title+'</div><div class="im">'+i.date+'</div></div>';});left+='</div>';}
+  else left+='<div style="color:var(--green);font-size:12px;margin-bottom:14px">✅ Проблем нет</div>';
+  if(canEdit){left+='<div style="display:flex;gap:7px;margin-top:8px"><button class="btn btn-primary" onclick="openEditModal('+p.id+')">✏️ Редактировать</button><button class="btn btn-red" onclick="deleteProject('+p.id+')">🗑 Удалить</button></div>';}
+
+  // RIGHT COLUMN — tasks (list + deadline board)
+  var right='';
+  right+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
+  right+='<span style="font-size:14px;font-weight:700">✅ Задачи <span style="font-size:12px;font-weight:400;color:var(--muted)">('+ptd+'/'+pt.length+')</span></span>';
+  right+='<div style="display:flex;gap:7px;align-items:center">';
+  if(canEdit)right+='<button class="btn btn-primary btn-sm" onclick="openAddTaskModal('+id+')">+ Задача</button>';
+  right+='<div class="view-toggle"><button class="vt-btn active" id="pv-list" onclick="togglePanelView(\'list\')">📋 Список</button><button class="vt-btn" id="pv-dl" onclick="togglePanelView(\'deadline\')">⏰ Сроки</button></div>';
+  right+='</div></div>';
   if(pt.length){
-    html+='<div class="psec">';
-    html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
-    html+='<h3 style="margin:0">Задачи ('+ptd+'/'+pt.length+')</h3>';
-    html+='<div class="view-toggle">';
-    html+='<button class="vt-btn active" id="pv-list" onclick="togglePanelView(\'list\')">📋 Список</button>';
-    html+='<button class="vt-btn" id="pv-dl" onclick="togglePanelView(\'deadline\')">⏰ Сроки</button>';
-    html+='</div></div>';
-    html+='<div id="panel-tl">'+buildTaskList(pt)+'</div>';
-    html+='<div id="panel-td" style="display:none">'+buildDeadlineBoard(pt,true)+'</div>';
-    html+='</div>';
+    right+='<div id="panel-tl">'+buildTaskList(pt)+'</div>';
+    right+='<div id="panel-td" style="display:none">'+buildDeadlineBoard(pt,false)+'</div>';
+  } else {
+    right+='<div class="empty">Задачи не добавлены</div>';
   }
-  if(p.issues&&p.issues.length){html+='<div class="psec"><h3>Проблемы</h3>';p.issues.forEach(function(i){html+='<div class="iss" style="border-color:'+(i.severity==='high'?'#ef4444':'#f59e0b')+'"><div class="it">'+(i.severity==='high'?'🔴':'⚠️')+' '+i.title+'</div><div class="im">'+i.date+'</div></div>';});html+='</div>';}
-  else html+='<div style="color:#22c55e;font-size:11px;margin-bottom:12px">✅ Проблем нет</div>';
-  if(canEdit){html+='<div style="display:flex;gap:6px;margin-top:6px"><button class="btn btn-primary btn-sm" onclick="openEditModal('+p.id+')">✏️ Редактировать</button><button class="btn btn-red btn-sm" onclick="deleteProject('+p.id+')">🗑 Удалить</button></div>';}
-  document.getElementById('panel-body').innerHTML=html;
+
+  document.getElementById('panel-body').innerHTML=
+    '<div class="panel-col panel-col-left">'+left+'</div>'+
+    '<div class="panel-col panel-col-right">'+right+'</div>';
   document.getElementById('overlay').classList.add('open');
   document.getElementById('side-panel').classList.add('open');
 }
@@ -1247,89 +1267,85 @@ function openTaskDetail(id){
   var sl={todo:'К выполнению',inprogress:'В работе',done:'✓ Готово',pending_approval:'⏳ Ожидает одобрения'}[t.status]||'';
   var sc2={todo:'b-gray',inprogress:'b-yellow',done:'b-green',pending_approval:'b-purple'}[t.status]||'b-gray';
   document.getElementById('panel-title').innerHTML='✅ '+t.title;
-  var html='<div style="display:flex;gap:5px;margin-bottom:14px;flex-wrap:wrap"><span class="badge '+sc2+'">'+sl+'</span><span class="badge" style="color:'+pc+';background:'+pc+'22">'+pl+'</span>'+(proj?'<span class="badge b-blue">📁 '+proj.name+'</span>':'')+'</div>';
-  if(t.goal)html+='<div style="background:var(--card2);border-radius:7px;padding:10px 12px;margin-bottom:14px;border-left:3px solid #4f6ef7"><div style="font-size:10px;color:#8892a4;margin-bottom:2px">ЦЕЛЬ</div><div style="font-size:12px;font-weight:600">'+t.goal+'</div></div>';
-  html+='<div class="psec"><h3>Детали</h3><div class="g2">';
-  html+='<div class="kv"><div class="k">Ответственный</div><div class="v">👤 '+(t.owner||'—')+'</div></div>';
-  html+='<div class="kv"><div class="k">Дедлайн</div><div class="v">'+( t.deadline||'—')+' '+dl(t.deadline)+'</div></div>';
-  html+='<div class="kv"><div class="k">Спринт</div><div class="v">'+(t.sprint||'—')+'</div></div>';
-  html+='<div class="kv"><div class="k">Прогресс</div><div class="v">'+(t.progress!=null&&t.progress>0?t.progress+'%':'—')+'</div></div>';
-  html+='</div></div>';
-  if(t.kpis&&t.kpis.length){html+='<div class="psec"><h3>KPI / Метрики</h3>';t.kpis.forEach(function(k){html+='<div class="mrow"><span style="font-size:11px">'+k.name+'</span><div class="mvs"><div class="mv"><div class="k">ПЛАН</div><div class="v">'+k.plan+'</div></div><div class="mv"><div class="k">ФАКТ</div><div class="v '+(k.ok===true?'pfg':k.ok===false?'pfb':'')+'">'+k.fact+'</div></div></div></div>';});html+='</div>';}
-  if(t.desc)html+='<div class="psec"><h3>Описание</h3><div style="font-size:11px;color:#8892a4">'+t.desc+'</div></div>';
-  // TIME TRACKING
+
+  // LEFT COLUMN — info, kpis, description, time
+  var left='';
+  left+='<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap"><span class="badge '+sc2+'">'+sl+'</span><span class="badge" style="color:'+pc+';background:'+pc+'22">'+pl+'</span>'+(proj?'<span class="badge b-blue">📁 '+proj.name+'</span>':'')+'</div>';
+  if(t.goal)left+='<div style="background:var(--card2);border-radius:8px;padding:12px 14px;margin-bottom:16px;border-left:3px solid var(--accent)"><div style="font-size:10px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">Цель задачи</div><div style="font-size:13px;font-weight:600">'+t.goal+'</div></div>';
+  left+='<div class="psec"><h3>Детали</h3><div class="g2">';
+  left+='<div class="kv"><div class="k">Ответственный</div><div class="v">👤 '+(t.owner||'—')+'</div></div>';
+  left+='<div class="kv"><div class="k">Дедлайн</div><div class="v">'+dl(t.deadline)+'<br><span style="font-size:10px;color:var(--muted)">'+(t.deadline||'—')+'</span></div></div>';
+  left+='<div class="kv"><div class="k">Спринт</div><div class="v">'+(t.sprint||'—')+'</div></div>';
+  left+='<div class="kv"><div class="k">Прогресс</div><div class="v">'+(t.progress!=null&&t.progress>0?'<div class="pw"><div class="pb" style="height:6px"><div class="pf" style="width:'+t.progress+'%;background:'+pgc(t.progress)+'"></div></div><b>'+t.progress+'%</b></div>':'—')+'</div></div>';
+  left+='</div></div>';
+  if(t.kpis&&t.kpis.length){left+='<div class="psec"><h3>KPI / Метрики</h3>';t.kpis.forEach(function(k){left+='<div class="mrow"><span style="font-size:12px">'+k.name+'</span><div class="mvs"><div class="mv"><div class="k">ПЛАН</div><div class="v">'+k.plan+'</div></div><div class="mv"><div class="k">ФАКТ</div><div class="v '+(k.ok===true?'pfg':k.ok===false?'pfb':'')+'">'+k.fact+'</div></div></div></div>';});left+='</div>';}
+  if(t.desc)left+='<div class="psec"><h3>Описание</h3><div style="font-size:12px;color:var(--muted);line-height:1.5">'+t.desc+'</div></div>';
   if(t.hoursPlanned||t.hoursActual){
-    var hp=t.hoursPlanned||0,hf=t.hoursActual||0,pct=hp?Math.min(100,Math.round(hf/hp*100)):0;
-    var tc=pct>100?'#ef4444':pct>80?'#f59e0b':'#4f6ef7';
-    html+='<div class="psec"><h3>Учёт времени</h3>';
-    html+='<div class="g2"><div class="kv"><div class="k">Запланировано</div><div class="v">'+hp+'ч</div></div>';
-    html+='<div class="kv"><div class="k">Фактически</div><div class="v" style="color:'+tc+'">'+hf+'ч ('+pct+'%)</div></div></div>';
-    if(hp){html+='<div class="time-bar" style="margin-top:8px"><div class="time-fill" style="width:'+pct+'%;background:'+tc+'"></div></div>';}
-    html+='</div>';
+    var hp=t.hoursPlanned||0,hf=t.hoursActual||0,pct2=hp?Math.min(100,Math.round(hf/hp*100)):0;
+    var tc=pct2>100?'var(--red)':pct2>80?'var(--yellow)':'var(--accent)';
+    left+='<div class="psec"><h3>Учёт времени</h3>';
+    left+='<div class="g2"><div class="kv"><div class="k">Запланировано</div><div class="v">'+hp+'ч</div></div>';
+    left+='<div class="kv"><div class="k">Фактически</div><div class="v" style="color:'+tc+'">'+hf+'ч ('+pct2+'%)</div></div></div>';
+    if(hp){left+='<div class="time-bar" style="margin-top:10px"><div class="time-fill" style="width:'+pct2+'%;background:'+tc+'"></div></div>';}
+    left+='</div>';
   }
+  left+='<div style="display:flex;gap:7px;margin-top:16px">';
+  left+='<button class="btn btn-primary" onclick="editTask('+t.id+');closePanel()">✏️ Редактировать</button>';
+  left+='<button class="btn btn-ghost" onclick="toggleTask('+t.id+');openTaskDetail('+t.id+')">'+(t.status==='done'?'↩ Вернуть':'✓ Готово')+'</button>';
+  left+='<button class="btn btn-red" onclick="deleteTask('+t.id+');closePanel()">🗑 Удалить</button>';
+  left+='</div>';
+
+  // RIGHT COLUMN — checklist, subtasks, comments
+  var right='';
   // CHECKLIST
   var cl=t.checklist||[];
-  if(cl.length||true){
-    var clDone=cl.filter(function(c){return c.done;}).length;
-    html+='<div class="psec"><h3>Чеклист '+(cl.length?'('+clDone+'/'+cl.length+')':'')+'</h3>';
-    if(cl.length){html+='<div style="background:var(--card2);border-radius:7px;padding:8px 10px;margin-bottom:8px">';cl.forEach(function(c,i){html+='<div class="cl-item"><div class="cl-cb'+(c.done?' done':'')+'" onclick="toggleChecklist('+t.id+','+i+')">'+(c.done?'✓':'')+'</div><span class="cl-text'+(c.done?' done':'')+'">'+c.text+'</span><button onclick="removeChecklist('+t.id+','+i+')" style="background:none;border:none;color:#8892a4;cursor:pointer;font-size:12px">✕</button></div>';});html+='</div>';}
-    html+='<div style="display:flex;gap:5px"><input id="cl-inp-'+t.id+'" placeholder="Новый пункт..." style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 8px;font-size:11px;outline:none" onkeydown="if(event.keyCode===13)addChecklist('+t.id+')"><button class="btn btn-ghost btn-sm" onclick="addChecklist('+t.id+')">+</button></div>';
-    html+='</div>';
-  }
+  var clDone=cl.filter(function(c){return c.done;}).length;
+  right+='<div class="psec"><h3>Чеклист '+(cl.length?'('+clDone+'/'+cl.length+')':'')+'</h3>';
+  if(cl.length){right+='<div style="background:var(--card2);border-radius:8px;padding:8px 12px;margin-bottom:10px;border:1px solid var(--border)">';cl.forEach(function(c,i){right+='<div class="cl-item"><div class="cl-cb'+(c.done?' done':'')+'" onclick="toggleChecklist('+t.id+','+i+')">'+(c.done?'✓':'')+'</div><span class="cl-text'+(c.done?' done':'')+'">'+c.text+'</span><button onclick="removeChecklist('+t.id+','+i+')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px">✕</button></div>';});right+='</div>';}
+  right+='<div style="display:flex;gap:5px"><input id="cl-inp-'+t.id+'" placeholder="Новый пункт чеклиста..." style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 10px;font-size:12px;outline:none" onkeydown="if(event.keyCode===13)addChecklist('+t.id+')"><button class="btn btn-primary btn-sm" onclick="addChecklist('+t.id+')">+</button></div>';
+  right+='</div>';
   // SUBTASKS
   var subs=t.subtasks||[];
   var subsDone=subs.filter(function(s){return (s.checklist||[]).length&&(s.checklist||[]).every(function(c){return c.done;});}).length;
-  html+='<div class="psec"><h3>Подзадачи '+(subs.length?'('+subsDone+'/'+subs.length+')':'')+'</h3>';
-  if(subs.length){
-    subs.forEach(function(s){
-      var sdone=(s.checklist||[]).length&&(s.checklist||[]).every(function(c){return c.done;});
-      var spct=s.checklist&&s.checklist.length?Math.round(s.checklist.filter(function(c){return c.done;}).length/s.checklist.length*100):0;
-      html+='<div style="background:var(--card2);border-radius:8px;padding:10px 12px;margin-bottom:8px;border-left:3px solid '+(sdone?'#22c55e':'#4f6ef7')+'">';
-      html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
-      html+='<span style="font-size:12px;font-weight:700;color:var(--text)">'+(sdone?'✅ ':'🔲 ')+s.title+'</span>';
-      html+='<div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm" onclick="openEditSubtask('+t.id+','+s.id+')" style="padding:2px 6px;font-size:10px">✏️</button><button class="btn btn-red btn-sm" onclick="deleteSubtask('+t.id+','+s.id+')" style="padding:2px 6px;font-size:10px">🗑</button></div>';
-      html+='</div>';
-      html+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">';
-      if(s.owner)html+='<span style="font-size:10px;color:#8892a4">👤 '+s.owner+'</span>';
-      if(s.deadline)html+='<span style="font-size:10px;color:#8892a4">📅 '+s.deadline+'</span>';
-      if(s.kpi)html+='<span style="font-size:10px;color:#4f6ef7">🎯 '+s.kpi+'</span>';
-      if(s.metric)html+='<span style="font-size:10px;color:#22c55e">📈 '+s.metric+'</span>';
-      html+='</div>';
-      if(s.checklist&&s.checklist.length){
-        html+='<div style="margin-bottom:6px">';
-        html+='<div style="font-size:10px;color:#8892a4;margin-bottom:4px">Чеклист ('+spct+'%)</div>';
-        html+='<div style="background:var(--bg);border-radius:6px;padding:6px 8px">';
-        s.checklist.forEach(function(c,ci){
-          html+='<div class="cl-item"><div class="cl-cb'+(c.done?' done':'')+'" onclick="toggleSubtaskChecklist('+t.id+','+s.id+','+ci+')">'+(c.done?'✓':'')+'</div>';
-          html+='<span class="cl-text'+(c.done?' done':'')+'">'+c.text+'</span>';
-          html+='<button onclick="removeSubtaskChecklist('+t.id+','+s.id+','+ci+')" style="background:none;border:none;color:#8892a4;cursor:pointer;font-size:11px">✕</button></div>';
-        });
-        html+='</div>';
-        if(s.checklist.length>1){html+='<div class="time-bar" style="margin-top:5px"><div class="time-fill" style="width:'+spct+'%;background:'+(spct===100?'#22c55e':'#4f6ef7')+'"></div></div>';}
-        html+='</div>';
-      }
-      html+='<div style="display:flex;gap:4px;margin-top:6px"><input id="stcl-'+t.id+'-'+s.id+'" placeholder="Добавить пункт..." style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:4px 7px;font-size:10px;outline:none" onkeydown="if(event.keyCode===13)addSubtaskChecklist('+t.id+','+s.id+')"><button class="btn btn-ghost btn-sm" onclick="addSubtaskChecklist('+t.id+','+s.id+')" style="padding:2px 8px;font-size:11px">+</button></div>';
-      html+='</div>';
-    });
-  }
-  html+='<button class="btn btn-ghost btn-sm" onclick="openAddSubtask('+t.id+')" style="margin-top:4px;width:100%;justify-content:center">+ Добавить подзадачу</button>';
-  html+='</div>';
+  right+='<div class="psec"><h3>Подзадачи '+(subs.length?'('+subsDone+'/'+subs.length+')':'')+'</h3>';
+  subs.forEach(function(s){
+    var sdone=(s.checklist||[]).length&&(s.checklist||[]).every(function(c){return c.done;});
+    var spct=s.checklist&&s.checklist.length?Math.round(s.checklist.filter(function(c){return c.done;}).length/s.checklist.length*100):0;
+    right+='<div style="background:var(--card2);border-radius:8px;padding:11px 13px;margin-bottom:8px;border-left:3px solid '+(sdone?'var(--green)':'var(--accent)')+';border:1px solid var(--border)">';
+    right+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:12px;font-weight:700">'+(sdone?'✅ ':'🔲 ')+s.title+'</span>';
+    right+='<div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm" onclick="openEditSubtask('+t.id+','+s.id+')" style="padding:2px 7px">✏️</button><button class="btn btn-red btn-sm" onclick="deleteSubtask('+t.id+','+s.id+')" style="padding:2px 7px">🗑</button></div></div>';
+    right+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">';
+    if(s.owner)right+='<span style="font-size:10px;color:var(--muted)">👤 '+s.owner+'</span>';
+    if(s.deadline)right+='<span style="font-size:10px;color:var(--muted)">📅 '+s.deadline+'</span>';
+    if(s.kpi)right+='<span style="font-size:10px;color:var(--accent)">🎯 '+s.kpi+'</span>';
+    if(s.metric)right+='<span style="font-size:10px;color:var(--green)">📈 '+s.metric+'</span>';
+    right+='</div>';
+    if(s.checklist&&s.checklist.length){
+      right+='<div style="background:var(--bg);border-radius:6px;padding:6px 8px;margin-bottom:6px">';
+      s.checklist.forEach(function(c,ci){right+='<div class="cl-item"><div class="cl-cb'+(c.done?' done':'')+'" onclick="toggleSubtaskChecklist('+t.id+','+s.id+','+ci+')">'+(c.done?'✓':'')+'</div><span class="cl-text'+(c.done?' done':'')+'">'+c.text+'</span><button onclick="removeSubtaskChecklist('+t.id+','+s.id+','+ci+')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px">✕</button></div>';});
+      right+='</div>';
+      if(s.checklist.length>1){right+='<div class="time-bar"><div class="time-fill" style="width:'+spct+'%;background:'+(spct===100?'var(--green)':'var(--accent)')+'"></div></div>';}
+    }
+    right+='<div style="display:flex;gap:4px;margin-top:8px"><input id="stcl-'+t.id+'-'+s.id+'" placeholder="Добавить пункт..." style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:4px 8px;font-size:11px;outline:none" onkeydown="if(event.keyCode===13)addSubtaskChecklist('+t.id+','+s.id+')"><button class="btn btn-ghost btn-sm" onclick="addSubtaskChecklist('+t.id+','+s.id+')" style="padding:2px 9px">+</button></div>';
+    right+='</div>';
+  });
+  right+='<button class="btn btn-ghost btn-sm" onclick="openAddSubtask('+t.id+')" style="width:100%;margin-top:4px">+ Добавить подзадачу</button>';
+  right+='</div>';
   // COMMENTS
   var comments=t.comments||[];
-  html+='<div class="psec"><h3>Комментарии ('+comments.length+')</h3>';
+  right+='<div class="psec"><h3>Комментарии ('+comments.length+')</h3>';
   comments.forEach(function(c){
     var cu=users.find(function(u){return u.id===c.userId;})||{name:c.userName||'?',id:0};
-    html+='<div class="comment-item"><div class="comment-avatar" style="background:'+ucolor(cu.id)+'">'+ini(cu.name)+'</div>';
-    html+='<div class="comment-body"><div class="comment-author">'+cu.name+'</div>';
-    html+='<div class="comment-text">'+c.text+'</div>';
-    html+='<div class="comment-time">'+c.date+'</div></div></div>';
+    right+='<div class="comment-item"><div class="comment-avatar" style="background:'+ucolor(cu.id)+'">'+ini(cu.name)+'</div>';
+    right+='<div class="comment-body"><div class="comment-author">'+cu.name+'</div><div class="comment-text">'+c.text+'</div><div class="comment-time">'+c.date+'</div></div></div>';
   });
-  html+='<div style="display:flex;gap:5px;margin-top:8px">';
-  html+='<input id="cmt-inp-'+t.id+'" placeholder="Написать комментарий..." style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 9px;font-size:12px;outline:none" onkeydown="if(event.keyCode===13)addComment('+t.id+')">';
-  html+='<button class="btn btn-primary btn-sm" onclick="addComment('+t.id+')">Отправить</button>';
-  html+='</div></div>';
-  html+='<div style="display:flex;gap:6px;margin-top:6px"><button class="btn btn-primary btn-sm" onclick="editTask('+t.id+');closePanel()">✏️</button><button class="btn btn-ghost btn-sm" onclick="toggleTask('+t.id+');closePanel()">'+(t.status==='done'?'↩':'✓')+'</button><button class="btn btn-red btn-sm" onclick="deleteTask('+t.id+');closePanel()">🗑</button></div>';
-  document.getElementById('panel-body').innerHTML=html;
+  right+='<div style="display:flex;gap:6px;margin-top:8px"><input id="cmt-inp-'+t.id+'" placeholder="Написать комментарий..." style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 10px;font-size:12px;outline:none" onkeydown="if(event.keyCode===13)addComment('+t.id+')">';
+  right+='<button class="btn btn-primary" onclick="addComment('+t.id+')">Отправить</button></div>';
+  right+='</div>';
+
+  document.getElementById('panel-body').innerHTML=
+    '<div class="panel-col panel-col-left">'+left+'</div>'+
+    '<div class="panel-col panel-col-right">'+right+'</div>';
   document.getElementById('overlay').classList.add('open');
   document.getElementById('side-panel').classList.add('open');
 }
