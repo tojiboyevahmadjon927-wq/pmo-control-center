@@ -257,6 +257,27 @@ tbody td{padding:9px 10px;vertical-align:middle}
 .time-fill{height:100%;border-radius:4px;transition:width .3s}
 /* PANEL TASK ROW */
 .ptask-row:hover{background:var(--card2)!important}
+/* VIEW TOGGLE */
+.view-toggle{display:flex;gap:2px;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:2px}
+.vt-btn{padding:5px 11px;border-radius:6px;border:none;cursor:pointer;font-size:11px;font-weight:600;background:transparent;color:var(--muted);transition:all .15s;white-space:nowrap}
+.vt-btn.active{background:var(--accent);color:#fff}
+/* DEADLINE BOARD */
+.dl-board{display:flex;gap:10px;overflow-x:auto;padding-bottom:14px}
+.dl-col{min-width:210px;flex:0 0 210px;display:flex;flex-direction:column}
+.dl-col-h{padding:8px 11px;border-radius:8px 8px 0 0;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:space-between;color:#fff;gap:6px}
+.dl-col-h .dl-cnt{background:rgba(255,255,255,.28);border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700}
+.dl-col-b{flex:1;border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;padding:7px;min-height:80px;background:var(--card)}
+.dl-card{background:var(--card2);border:1px solid var(--border);border-radius:7px;padding:9px 11px;margin-bottom:6px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.dl-card:hover{border-color:var(--accent);box-shadow:var(--shadow)}
+.dl-card.dl-done .dl-title{text-decoration:line-through;color:var(--muted)}
+.dl-title{font-size:12px;font-weight:600;margin-bottom:5px;line-height:1.35}
+.dl-meta{font-size:10px;color:var(--muted);display:flex;flex-direction:column;gap:2px}
+.dl-acts{display:flex;gap:4px;margin-top:6px}
+.dl-empty{text-align:center;color:var(--muted);padding:20px 8px;font-size:11px;opacity:.6}
+/* COMPACT DEADLINE BOARD (for panel) */
+.dl-board-compact .dl-col{min-width:170px;flex:0 0 170px}
+.dl-board-compact .dl-title{font-size:11px}
+.dl-board-compact .dl-meta{font-size:9px}
 
 
 /* ======= AI AGENT ======= */
@@ -406,10 +427,14 @@ tbody td{padding:9px 10px;vertical-align:middle}
 
 <!-- TASKS -->
 <div id="tab-tasks" style="display:none">
-  <div class="fbar">
+  <div class="fbar" style="margin-bottom:10px">
     <span class="sec-t">✅ Задачи</span>
+    <div class="view-toggle">
+      <button class="vt-btn active" id="tv-list" onclick="setTasksView('list')">📋 Список</button>
+      <button class="vt-btn" id="tv-deadline" onclick="setTasksView('deadline')">⏰ Сроки</button>
+    </div>
     <select class="fsel" id="tf-proj" onchange="renderTasks()"><option value="">Все продукты</option></select>
-    <select class="fsel" id="tf-stat" onchange="renderTasks()"><option value="">Все статусы</option><option value="todo">К выполнению</option><option value="inprogress">В работе</option><option value="done">Готово</option></select>
+    <select class="fsel" id="tf-stat" onchange="renderTasks()" id="tf-stat-wrap"><option value="">Все статусы</option><option value="todo">К выполнению</option><option value="inprogress">В работе</option><option value="done">Готово</option></select>
     <select class="fsel" id="tf-sprint" onchange="renderTasks()"><option value="">Все спринты</option></select>
     <button class="btn btn-primary btn-sm" id="btn-add-task" onclick="openAddTaskModal()">+ Задача</button>
   </div>
@@ -992,6 +1017,14 @@ function renderTasks(){
   });
   var cont=document.getElementById('tasks-list');if(!cont)return;
   if(!list.length){cont.innerHTML='<div class="empty">Задачи не найдены</div>';return;}
+
+  // DEADLINE VIEW
+  if(tasksView==='deadline'){
+    cont.innerHTML=buildDeadlineBoard(list,false);
+    return;
+  }
+
+  // LIST VIEW (grouped by sprint)
   var sprints=[...new Set(list.map(function(t){return t.sprint;}))].sort();
   cont.innerHTML=sprints.map(function(sp){
     var tasks=list.filter(function(t){return t.sprint===sp;});
@@ -1007,7 +1040,7 @@ function renderTasks(){
         '<div class="tmeta"><span style="color:'+pc+'">● '+pl+'</span><span>📁 '+(proj?proj.name:'?')+'</span><span>👤 '+(t.owner||'—')+'</span>'+(t.deadline?'<span>'+dl(t.deadline)+'</span>':'')+sb+'</div></div>'+
         '<div class="tact"><button class="btn btn-ghost btn-sm" onclick="editTask('+t.id+');event.stopPropagation()">✏️</button><button class="btn btn-red btn-sm" onclick="deleteTask('+t.id+');event.stopPropagation()">🗑</button></div></div>';
     }).join('');
-    return '<div style="margin-bottom:16px"><div style="font-size:11px;font-weight:700;color:#8892a4;margin-bottom:8px;display:flex;align-items:center;gap:6px">📅 '+sp+' <span style="background:var(--border);border-radius:20px;padding:1px 6px;font-size:10px">'+done+'/'+tasks.length+'</span></div>'+cards+'</div>';
+    return '<div style="margin-bottom:16px"><div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:6px">📅 '+sp+' <span style="background:var(--border);border-radius:20px;padding:1px 6px;font-size:10px">'+done+'/'+tasks.length+'</span></div>'+cards+'</div>';
   }).join('');
 }
 function toggleTask(id){var t=biTasks.find(function(x){return x.id===id;});if(!t)return;t.status=t.status==='done'?'todo':'done';renderTasks();renderSummary();renderNotifs();}
@@ -1024,6 +1057,89 @@ function buildTaskList(tasks){
   });
   return html;
 }
+
+// ============================================================
+// DEADLINE BOARD (Сроки)
+// ============================================================
+var tasksView='list';
+var DL_COLS=[
+  {id:'overdue', label:'Просрочены',          color:'#ef4444'},
+  {id:'today',   label:'На сегодня',           color:'#16a34a'},
+  {id:'week',    label:'На этой неделе',       color:'#0891b2'},
+  {id:'next',    label:'На следующей неделе',  color:'#7c3aed'},
+  {id:'nodl',    label:'Без срока',            color:'#64748b'},
+  {id:'later',   label:'Больше двух недель',   color:'#d97706'},
+  {id:'done',    label:'Завершены',            color:'#94a3b8'},
+];
+
+function getDeadlineCat(t){
+  if(t.status==='done')return 'done';
+  if(!t.deadline)return 'nodl';
+  var now=new Date();now.setHours(0,0,0,0);
+  var d=new Date(t.deadline);d.setHours(0,0,0,0);
+  if(d<now)return 'overdue';
+  if(d.getTime()===now.getTime())return 'today';
+  // End of current week (Sunday)
+  var dow=now.getDay()||7;// Mon=1..Sun=7
+  var weekEnd=new Date(now);weekEnd.setDate(now.getDate()+(7-dow));
+  var nextWeekEnd=new Date(weekEnd);nextWeekEnd.setDate(weekEnd.getDate()+7);
+  if(d<=weekEnd)return 'week';
+  if(d<=nextWeekEnd)return 'next';
+  return 'later';
+}
+
+function buildDeadlineBoard(tasks,compact){
+  var cats={};DL_COLS.forEach(function(c){cats[c.id]=[];});
+  tasks.forEach(function(t){var c=getDeadlineCat(t);if(cats[c])cats[c].push(t);});
+  var html='<div class="dl-board'+(compact?' dl-board-compact':'')+'">';
+  DL_COLS.forEach(function(col){
+    var ct=cats[col.id]||[];
+    html+='<div class="dl-col">';
+    html+='<div class="dl-col-h" style="background:'+col.color+'">'+col.label+'<span class="dl-cnt">'+ct.length+'</span></div>';
+    html+='<div class="dl-col-b">';
+    if(!ct.length){html+='<div class="dl-empty">—</div>';}
+    else{ct.forEach(function(t){
+      var proj=projects.find(function(p){return p.id===t.projectId;});
+      var pc={high:'#ef4444',medium:'#f59e0b',low:'#22c55e'}[t.priority]||'#8892a4';
+      var pl={high:'🔴',medium:'🟡',low:'🟢'}[t.priority]||'';
+      var isDone=t.status==='done';
+      html+='<div class="dl-card'+(isDone?' dl-done':'')+'" onclick="openTaskDetail('+t.id+')">';
+      html+='<div class="dl-title">'+t.title+'</div>';
+      html+='<div class="dl-meta">';
+      if(proj&&!compact)html+='<span>📁 '+proj.name+'</span>';
+      html+='<span style="color:'+pc+'">'+pl+' '+(t.owner||'—')+'</span>';
+      if(t.deadline)html+='<span>📅 '+dl(t.deadline)+'</span>';
+      if(t.sprint&&!compact)html+='<span>🔁 '+t.sprint+'</span>';
+      html+='</div>';
+      if(!compact)html+='<div class="dl-acts"><button class="btn btn-ghost btn-sm" style="flex:1" onclick="editTask('+t.id+');event.stopPropagation()">✏️</button><button class="btn btn-red btn-sm" style="flex:1" onclick="deleteTask('+t.id+');event.stopPropagation()">🗑</button></div>';
+      html+='</div>';
+    });}
+    html+='</div></div>';
+  });
+  html+='</div>';
+  return html;
+}
+
+function setTasksView(v){
+  tasksView=v;
+  document.getElementById('tv-list').classList.toggle('active',v==='list');
+  document.getElementById('tv-deadline').classList.toggle('active',v==='deadline');
+  var ss=document.getElementById('tf-stat');
+  if(ss)ss.style.display=(v==='deadline')?'none':'';
+  renderTasks();
+}
+
+function togglePanelView(v){
+  var listEl=document.getElementById('panel-tl');
+  var dlEl=document.getElementById('panel-td');
+  var lb=document.getElementById('pv-list');
+  var db=document.getElementById('pv-dl');
+  listEl.style.display=v==='list'?'block':'none';
+  dlEl.style.display=v==='deadline'?'block':'none';
+  if(lb)lb.classList.toggle('active',v==='list');
+  if(db)db.classList.toggle('active',v==='deadline');
+}
+// ============================================================
 
 // COLLAB
 function renderCollab(){
@@ -1104,7 +1220,18 @@ function openDetail(id){
   html+='<div class="kv"><div class="k">Бюджет факт</div><div class="v" style="color:'+(bpf>110?'#ef4444':'#22c55e')+'">$'+fmt(p.budgetFact)+' ('+bpf+'%)</div></div>';
   html+='</div></div>';
   if(p.kpis&&p.kpis.length){html+='<div class="psec"><h3>KPI — план / факт</h3>';p.kpis.forEach(function(k){html+='<div class="mrow"><span style="font-size:11px">'+k.name+'</span><div class="mvs"><div class="mv"><div class="k">ПЛАН</div><div class="v">'+k.plan+'</div></div><div class="mv"><div class="k">ФАКТ</div><div class="v '+(k.ok===true?'pfg':k.ok===false?'pfb':'')+'">'+k.fact+'</div></div></div></div>';});html+='</div>';}
-  if(pt.length)html+='<div class="psec"><h3>Задачи ('+ptd+'/'+pt.length+')</h3>'+buildTaskList(pt)+'</div>';
+  if(pt.length){
+    html+='<div class="psec">';
+    html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    html+='<h3 style="margin:0">Задачи ('+ptd+'/'+pt.length+')</h3>';
+    html+='<div class="view-toggle">';
+    html+='<button class="vt-btn active" id="pv-list" onclick="togglePanelView(\'list\')">📋 Список</button>';
+    html+='<button class="vt-btn" id="pv-dl" onclick="togglePanelView(\'deadline\')">⏰ Сроки</button>';
+    html+='</div></div>';
+    html+='<div id="panel-tl">'+buildTaskList(pt)+'</div>';
+    html+='<div id="panel-td" style="display:none">'+buildDeadlineBoard(pt,true)+'</div>';
+    html+='</div>';
+  }
   if(p.issues&&p.issues.length){html+='<div class="psec"><h3>Проблемы</h3>';p.issues.forEach(function(i){html+='<div class="iss" style="border-color:'+(i.severity==='high'?'#ef4444':'#f59e0b')+'"><div class="it">'+(i.severity==='high'?'🔴':'⚠️')+' '+i.title+'</div><div class="im">'+i.date+'</div></div>';});html+='</div>';}
   else html+='<div style="color:#22c55e;font-size:11px;margin-bottom:12px">✅ Проблем нет</div>';
   if(canEdit){html+='<div style="display:flex;gap:6px;margin-top:6px"><button class="btn btn-primary btn-sm" onclick="openEditModal('+p.id+')">✏️ Редактировать</button><button class="btn btn-red btn-sm" onclick="deleteProject('+p.id+')">🗑 Удалить</button></div>';}
