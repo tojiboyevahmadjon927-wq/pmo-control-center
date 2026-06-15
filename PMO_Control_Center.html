@@ -129,8 +129,8 @@ tbody td{padding:9px 10px;vertical-align:middle}
 .panel.open{transform:translateX(0)}
 .panel-h{padding:14px 28px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--topbar);flex-shrink:0;box-shadow:var(--shadow)}
 .panel-t{font-size:15px;font-weight:700}
-.xbtn{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:4px 9px;border-radius:7px;line-height:1}
-.xbtn:hover{color:var(--text);background:var(--card2)}
+.xbtn{background:none;border:none;color:#dc2626;font-size:18px;cursor:pointer;padding:4px 9px;border-radius:7px;line-height:1;font-weight:700}
+.xbtn:hover{color:#fff;background:#dc2626}
 /* PANEL 2-COLUMN GRID */
 .panel-b{display:grid;grid-template-columns:360px 1fr;flex:1;overflow:hidden}
 .panel-col{overflow-y:auto;padding:22px 24px;height:100%}
@@ -731,7 +731,7 @@ function dln(d){return Math.round((new Date(d)-new Date())/86400000);}
 function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
 function ucolor(uid){return ACOLS[(uid||1)%ACOLS.length];}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
-function closePanel(){document.getElementById('overlay').classList.remove('open');document.getElementById('side-panel').classList.remove('open');}
+function closePanel(){document.getElementById('overlay').classList.remove('open');document.getElementById('side-panel').classList.remove('open');try{localStorage.removeItem('pmo_panel_state');}catch(e){}}
 
 // LOGIN
 function initLogin(){}
@@ -1259,6 +1259,7 @@ function openDetail(id){
     '<div class="panel-col panel-col-right">'+right+'</div>';
   document.getElementById('overlay').classList.add('open');
   document.getElementById('side-panel').classList.add('open');
+  try{localStorage.setItem('pmo_panel_state',JSON.stringify({type:'project',id:id}));}catch(e){}
 }
 function openTaskDetail(id){
   var t=biTasks.find(function(x){return x.id===id;});if(!t)return;
@@ -1349,6 +1350,7 @@ function openTaskDetail(id){
     '<div class="panel-col panel-col-right">'+right+'</div>';
   document.getElementById('overlay').classList.add('open');
   document.getElementById('side-panel').classList.add('open');
+  try{localStorage.setItem('pmo_panel_state',JSON.stringify({type:'task',id:id}));}catch(e){}
 }
 
 // PROJECT CRUD

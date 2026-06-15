@@ -122,6 +122,14 @@
       var firstTab = (user.access && user.access[0]) || 'overview';
       setTab(firstTab);
       renderAll();
+      // Restore panel state after refresh
+      setTimeout(function(){
+        try{
+          var ps=JSON.parse(localStorage.getItem('pmo_panel_state'));
+          if(ps&&ps.type==='project'&&typeof openDetail==='function') openDetail(ps.id);
+          else if(ps&&ps.type==='task'&&typeof openTaskDetail==='function') openTaskDetail(ps.id);
+        }catch(e){}
+      },200);
     } catch(err) {
       console.error('[PMO] showUI error:', err);
       // Force refresh to recover
