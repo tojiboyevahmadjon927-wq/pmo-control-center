@@ -883,7 +883,7 @@ function buildTabs(){
   var access;
   if(saved.length){
     var merged=saved.slice();
-    roleAccess.forEach(function(t){if(merged.indexOf(t)<0&&['gantt','calendar'].indexOf(t)>=0)merged.push(t);});
+    roleAccess.forEach(function(t){if(merged.indexOf(t)<0)merged.push(t);});
     access=ALL_TABS.filter(function(t){return merged.indexOf(t)>=0;});
   }else{access=roleAccess;}
   var html=access.filter(function(t){return TAB_LABELS[t];}).map(function(t){return '<div class="tab" onclick="setTab(\''+t+'\')">'+TAB_LABELS[t]+'</div>';}).join('');
