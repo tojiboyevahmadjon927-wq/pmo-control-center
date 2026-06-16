@@ -31,6 +31,11 @@ async function ensureChatTable(){
   // Add subtasks column if missing
   try{await db.execute('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS subtasks JSON NULL DEFAULT NULL');}
   catch(e){console.log('  [DB] subtasks col:',e.message);}
+  // Add metrics/metricData columns if missing (North Star metric system)
+  try{await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS metrics JSON NULL DEFAULT NULL');}
+  catch(e){console.log('  [DB] metrics col:',e.message);}
+  try{await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS metricData JSON NULL DEFAULT NULL');}
+  catch(e){console.log('  [DB] metricData col:',e.message);}
 }
 async function seedDB(){
   try{
@@ -103,7 +108,7 @@ app.get('/api/data',async(req,res)=>{
       const[tasks]=await db.execute('SELECT * FROM tasks');
       const[requests]=await db.execute('SELECT * FROM collab_requests');
       users.forEach(u=>{u.access=pj(u.access,[]);});
-      projects.forEach(p=>{p.kpis=pj(p.kpis,[]);p.issues=pj(p.issues,[]);p.monthlyPlan=pj(p.monthlyPlan,[]);p.desc=p.description||'';});
+      projects.forEach(p=>{p.kpis=pj(p.kpis,[]);p.issues=pj(p.issues,[]);p.monthlyPlan=pj(p.monthlyPlan,[]);p.metrics=pj(p.metrics,null);p.metricData=pj(p.metricData,{});p.desc=p.description||'';});
       tasks.forEach(t=>{t.kpis=pj(t.kpis,[]);t.issues=pj(t.issues,[]);t.subtasks=pj(t.subtasks,[]);t.desc=t.description||'';});
       return res.json({ok:true,users,projects,tasks,collabRequests:requests});
     }
@@ -124,8 +129,8 @@ app.post('/api/data',async(req,res)=>{
       }
       for(const p of(projects||[])){
         await db.execute(
-          'INSERT INTO projects(id,name,stage,status,owner,ownerColor,northStar,budgetPlan,budgetFact,deadline,progress,yearlyGoal,kpis,issues,monthlyPlan,description)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),stage=VALUES(stage),status=VALUES(status),owner=VALUES(owner),northStar=VALUES(northStar),budgetPlan=VALUES(budgetPlan),budgetFact=VALUES(budgetFact),deadline=VALUES(deadline),progress=VALUES(progress),yearlyGoal=VALUES(yearlyGoal),kpis=VALUES(kpis),issues=VALUES(issues),monthlyPlan=VALUES(monthlyPlan),description=VALUES(description)',
-          [p.id,p.name,p.stage||'',p.status||'on_track',p.owner||'',p.ownerColor||'#4f6ef7',p.northStar||'',p.budgetPlan||0,p.budgetFact||0,p.deadline||null,p.progress||0,p.yearlyGoal||'',JSON.stringify(p.kpis||[]),JSON.stringify(p.issues||[]),JSON.stringify(p.monthlyPlan||[]),p.desc||'']
+          'INSERT INTO projects(id,name,stage,status,owner,ownerColor,northStar,budgetPlan,budgetFact,deadline,progress,yearlyGoal,kpis,issues,monthlyPlan,description,metrics,metricData)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),stage=VALUES(stage),status=VALUES(status),owner=VALUES(owner),northStar=VALUES(northStar),budgetPlan=VALUES(budgetPlan),budgetFact=VALUES(budgetFact),deadline=VALUES(deadline),progress=VALUES(progress),yearlyGoal=VALUES(yearlyGoal),kpis=VALUES(kpis),issues=VALUES(issues),monthlyPlan=VALUES(monthlyPlan),description=VALUES(description),metrics=VALUES(metrics),metricData=VALUES(metricData)',
+          [p.id,p.name,p.stage||'',p.status||'on_track',p.owner||'',p.ownerColor||'#4f6ef7',p.northStar||'',p.budgetPlan||0,p.budgetFact||0,p.deadline||null,p.progress||0,p.yearlyGoal||'',JSON.stringify(p.kpis||[]),JSON.stringify(p.issues||[]),JSON.stringify(p.monthlyPlan||[]),p.desc||'',p.metrics?JSON.stringify(p.metrics):null,JSON.stringify(p.metricData||{})]
         );
       }
       for(const t of(tasks||[])){

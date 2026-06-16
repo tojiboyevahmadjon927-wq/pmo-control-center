@@ -1,0 +1,22 @@
+{
+  "metrics": {
+    "northStar": { "name": "Выручка, всего (план роста +25% за 2026)", "unit": "млн сум", "target": 19967, "formula": "sum" },
+    "supporting": [
+      { "id": "base",    "name": "Базовая выручка (текущий тренд)",             "unit": "млн сум", "target": 15837, "weight": 1 },
+      { "id": "vozvrat", "name": "Возврат неактивных абонентов",                "unit": "млн сум", "target": 1263,  "weight": 1 },
+      { "id": "netpri",  "name": "Привлечение net-прироста базы",               "unit": "млн сум", "target": 1263,  "weight": 1 },
+      { "id": "upsell",  "name": "Up-sell / индексация тарифов (с сентября)",   "unit": "млн сум", "target": 844,   "weight": 1 },
+      { "id": "market",  "name": "Turon Market",                                "unit": "млн сум", "target": 470,   "weight": 1 },
+      { "id": "master",  "name": "Доп.услуги мастера",                          "unit": "млн сум", "target": 290,   "weight": 1 }
+    ]
+  },
+  "metricData": {
+    "2026-06": { "base": {"plan":15852.0,"fact":null}, "vozvrat": {"plan":0.0,"fact":null}, "netpri": {"plan":0.0,"fact":null}, "upsell": {"plan":0,"fact":null}, "market": {"plan":0.0,"fact":null}, "master": {"plan":0.0,"fact":null} },
+    "2026-07": { "base": {"plan":15751.4,"fact":null}, "vozvrat": {"plan":210.5,"fact":null}, "netpri": {"plan":210.5,"fact":null}, "upsell": {"plan":0,"fact":null}, "market": {"plan":78.3,"fact":null}, "master": {"plan":48.3,"fact":null} },
+    "2026-08": { "base": {"plan":15733.6,"fact":null}, "vozvrat": {"plan":421.0,"fact":null}, "netpri": {"plan":421.0,"fact":null}, "upsell": {"plan":0,"fact":null}, "market": {"plan":156.7,"fact":null}, "master": {"plan":96.7,"fact":null} },
+    "2026-09": { "base": {"plan":15935.0,"fact":null}, "vozvrat": {"plan":631.5,"fact":null}, "netpri": {"plan":631.5,"fact":null}, "upsell": {"plan":0.0,"fact":null}, "market": {"plan":235.0,"fact":null}, "master": {"plan":145.0,"fact":null} },
+    "2026-10": { "base": {"plan":15929.1,"fact":null}, "vozvrat": {"plan":842.0,"fact":null}, "netpri": {"plan":842.0,"fact":null}, "upsell": {"plan":281.3,"fact":null}, "market": {"plan":313.3,"fact":null}, "master": {"plan":193.3,"fact":null} },
+    "2026-11": { "base": {"plan":15881.9,"fact":null}, "vozvrat": {"plan":1052.5,"fact":null}, "netpri": {"plan":1052.5,"fact":null}, "upsell": {"plan":562.7,"fact":null}, "market": {"plan":391.7,"fact":null}, "master": {"plan":241.7,"fact":null} },
+    "2026-12": { "base": {"plan":15837.0,"fact":null}, "vozvrat": {"plan":1263.0,"fact":null}, "netpri": {"plan":1263.0,"fact":null}, "upsell": {"plan":844.0,"fact":null}, "market": {"plan":470.0,"fact":null}, "master": {"plan":290.0,"fact":null} }
+  }
+}
