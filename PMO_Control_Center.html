@@ -412,6 +412,12 @@ tbody td{padding:9px 10px;vertical-align:middle}
   </div>
 </div>
 
+<!-- METRICS -->
+<div id="tab-metrics" style="display:none">
+  <div class="sec-h"><span class="sec-t">📐 Метрики продуктов</span></div>
+  <div id="metrics-grid"></div>
+</div>
+
 <!-- KANBAN -->
 <div id="tab-kanban" style="display:none">
   <div class="fbar" style="margin-bottom:14px">
@@ -551,11 +557,44 @@ tbody td{padding:9px 10px;vertical-align:middle}
       <div class="fi"><label>Дедлайн</label><input id="pm-dl" type="date"></div>
       <div class="fi"><label>Прогресс (%)</label><input id="pm-prog" type="number" min="0" max="100"></div>
       <div class="fi full"><label>Годовая цель</label><input id="pm-yearly"></div>
-      <div class="fi full"><label>KPI (Название: план X, факт Y)</label><textarea id="pm-kpi" placeholder="ААБ: план 500, факт —&#10;Приход: план 10M, факт —"></textarea></div>
+      <div class="fi full" style="border-top:1px solid var(--border);margin-top:8px;padding-top:12px">
+        <label style="font-size:13px;font-weight:700;color:var(--accent)">📐 Система метрик продукта *</label>
+        <div id="pm-metrics-lock-note" style="display:none;font-size:11px;color:var(--muted);margin:6px 0 4px"></div>
+      </div>
+      <div class="fi full"><label>Название North Star метрики *</label><input id="pm-ns-name" placeholder="Напр.: Рост дохода YoY"></div>
+      <div class="fi"><label>Юнит North Star</label><input id="pm-ns-unit" placeholder="%, $, шт..."></div>
+      <div class="fi"><label>Цель North Star (план)</label><input id="pm-ns-target" type="number"></div>
+      <div class="fi"><label>Формула агрегации *</label>
+        <select id="pm-ns-formula">
+          <option value="percent_of_plan">% выполнения плана (среднее)</option>
+          <option value="sum">Сумма метрик</option>
+          <option value="average">Среднее значение</option>
+          <option value="weighted">Взвешенное среднее</option>
+        </select>
+      </div>
+      <div class="fi full">
+        <label>Поддерживающие метрики * (минимум 1) — из них считается North Star</label>
+        <div id="pm-supp-list"></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="pm-add-supp-btn" onclick="addSuppMetricRow()" style="margin-top:6px">+ Добавить метрику</button>
+      </div>
+      <div class="fi full"><label>Доп. заметки KPI (необязательно)</label><textarea id="pm-kpi" placeholder="ААБ: план 500, факт —&#10;Приход: план 10M, факт —"></textarea></div>
       <div class="fi full"><label>Проблемы/Риски</label><textarea id="pm-issues"></textarea></div>
       <div class="fi full"><label>Описание</label><textarea id="pm-desc"></textarea></div>
     </div>
     <div class="fact"><button class="btn btn-ghost" onclick="closeModal('proj-modal')">Отмена</button><button class="btn btn-primary" onclick="saveProject()">Сохранить</button></div>
+  </div>
+</div>
+
+<!-- METRIC ENTRY MODAL -->
+<div class="modal" id="metric-entry-modal">
+  <div class="mbox">
+    <h2 id="me-modal-title">📊 Ввод метрик</h2>
+    <input type="hidden" id="me-proj-id">
+    <div class="fg">
+      <div class="fi full"><label>Период</label><select id="me-period"></select></div>
+      <div class="fi full" id="me-rows"></div>
+    </div>
+    <div class="fact"><button class="btn btn-ghost" onclick="closeModal('metric-entry-modal')">Отмена</button><button class="btn btn-primary" onclick="saveMetricEntry()">Сохранить</button></div>
   </div>
 </div>
 
@@ -678,9 +717,9 @@ const STAGES=['Инициация','Планирование','Разработ�
 const SMAP={on_track:{l:'В норме',c:'b-green'},at_risk:{l:'Под риском',c:'b-yellow'},critical:{l:'Критично',c:'b-red'},paused:{l:'На паузе',c:'b-gray'},done:{l:'Завершён',c:'b-blue'}};
 const SCOL={'Инициация':'#4f6ef7','Планирование':'#7c3aed','Разработка':'#f59e0b','Тестирование':'#06b6d4','Запуск':'#22c55e','Завершён':'#6b7280'};
 const ACOLS=['#4f6ef7','#7c3aed','#ef4444','#22c55e','#f59e0b','#06b6d4','#ec4899'];
-const ALL_TABS=['overview','projects','kanban','gantt','calendar','plans','tasks','collab','admin'];
-const TAB_LABELS={'overview':'📊 Обзор','projects':'📋 Проекты','kanban':'🗂 Kanban','gantt':'📊 Ганtt','calendar':'📅 Календарь','plans':'📈 Планы','tasks':'✅ Задачи','collab':'🤝 Запросы','admin':'⚙️ Админ'};
-const ROLE_TABS={ceo:ALL_TABS,manager:['overview','projects','kanban','gantt','calendar','plans','tasks','collab'],member:['tasks','calendar','collab']};
+const ALL_TABS=['overview','projects','metrics','kanban','gantt','calendar','plans','tasks','collab','admin'];
+const TAB_LABELS={'overview':'📊 Обзор','projects':'📋 Проекты','metrics':'📐 Метрики','kanban':'🗂 Kanban','gantt':'📊 Ганtt','calendar':'📅 Календарь','plans':'📈 Планы','tasks':'✅ Задачи','collab':'🤝 Запросы','admin':'⚙️ Админ'};
+const ROLE_TABS={ceo:ALL_TABS,manager:['overview','projects','metrics','kanban','gantt','calendar','plans','tasks','collab'],member:['metrics','tasks','calendar','collab']};
 
 // DATA
 let projects=[
@@ -1503,13 +1542,209 @@ function openTaskDetail(id){
   try{localStorage.setItem('pmo_panel_state',JSON.stringify({type:'task',id:id}));}catch(e){}
 }
 
+// ===== METRICS SYSTEM =====
+// Each product gets an immutable-by-default metric tree: a North Star metric
+// computed from N supporting metrics via a fixed formula. Supporting metrics
+// carry their own plan/fact values per month (period). Only the product
+// owner or an admin (ceo/manager) may edit the metric set after creation.
+var suppRowSeq=1;
+function suppRowHtml(rowId,vals){
+  vals=vals||{};
+  function esc(v){return (v==null?'':String(v)).replace(/"/g,'&quot;');}
+  return '<div class="supp-row" data-row="'+rowId+'" style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center">'+
+    '<input type="hidden" class="supp-id" value="'+esc(vals.id)+'">'+
+    '<input class="supp-name" placeholder="Название метрики" value="'+esc(vals.name)+'">'+
+    '<input class="supp-unit" placeholder="Юнит" value="'+esc(vals.unit)+'">'+
+    '<input class="supp-target" type="number" placeholder="Цель (план)" value="'+(vals.target!=null?vals.target:'')+'">'+
+    '<input class="supp-weight" type="number" placeholder="Вес" value="'+(vals.weight!=null?vals.weight:'')+'">'+
+    '<button type="button" class="btn btn-ghost btn-sm" onclick="removeSuppMetricRow('+rowId+')" title="Удалить метрику">✕</button>'+
+    '</div>';
+}
+function addSuppMetricRow(vals){
+  var id=suppRowSeq++;
+  var cont=document.getElementById('pm-supp-list');
+  cont.insertAdjacentHTML('beforeend',suppRowHtml(id,vals));
+}
+function removeSuppMetricRow(rowId){
+  var el=document.querySelector('#pm-supp-list .supp-row[data-row="'+rowId+'"]');
+  if(el)el.remove();
+}
+function collectSuppMetrics(){
+  var rows=document.querySelectorAll('#pm-supp-list .supp-row');
+  var out=[];
+  rows.forEach(function(row){
+    var name=row.querySelector('.supp-name').value.trim();
+    if(!name)return;
+    var idEl=row.querySelector('.supp-id');
+    var id=idEl&&idEl.value?+idEl.value:(Date.now()+Math.floor(Math.random()*1000));
+    out.push({
+      id:id,
+      name:name,
+      unit:row.querySelector('.supp-unit').value.trim(),
+      target:+row.querySelector('.supp-target').value||0,
+      weight:+row.querySelector('.supp-weight').value||0
+    });
+  });
+  return out;
+}
+function setMetricsFieldsDisabled(disabled){
+  ['pm-ns-name','pm-ns-unit','pm-ns-target','pm-ns-formula'].forEach(function(id){var el=document.getElementById(id);if(el)el.disabled=disabled;});
+  document.querySelectorAll('#pm-supp-list .supp-row input').forEach(function(inp){inp.disabled=disabled;});
+  var addBtn=document.getElementById('pm-add-supp-btn');
+  if(addBtn)addBtn.disabled=disabled;
+}
+function isMetricsEditable(p){
+  if(!p)return true; // new product — always editable at creation
+  if(!currentUser)return false;
+  if(currentUser.role==='ceo'||currentUser.role==='manager')return true;
+  return (p.owner||'').trim().toLowerCase()===(currentUser.name||'').trim().toLowerCase();
+}
+function unlockMetricsEdit(){
+  if(!confirm('Изменить состав метрик продукта? Это повлияет на расчёт North Star. Исторические данные за прошлые месяцы сохранятся.'))return;
+  setMetricsFieldsDisabled(false);
+  document.getElementById('pm-metrics-lock-note').style.display='none';
+}
+function currentPeriod(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+// Computes the North Star value for a product at a given period (YYYY-MM)
+// from its supporting metrics' fact/plan values, per the product's fixed formula.
+function computeNorthStar(p,period){
+  if(!p||!p.metrics||!p.metrics.northStar)return {value:null,pct:null,hasData:false};
+  var supp=p.metrics.supporting||[];
+  if(!supp.length)return {value:null,pct:null,hasData:false};
+  var data=(p.metricData&&p.metricData[period])||{};
+  var facts=supp.map(function(s){var v=data[s.id];return (v&&v.fact!=null&&v.fact!=='')?Number(v.fact):null;});
+  var plans=supp.map(function(s){var v=data[s.id];return (v&&v.plan!=null&&v.plan!=='')?Number(v.plan):(Number(s.target)||0);});
+  var formula=p.metrics.northStar.formula||'percent_of_plan';
+  var validFacts=facts.filter(function(f){return f!=null;});
+  var value=null,pct=null;
+  if(formula==='sum'){
+    if(validFacts.length)value=validFacts.reduce(function(a,b){return a+b;},0);
+  }else if(formula==='average'){
+    if(validFacts.length)value=validFacts.reduce(function(a,b){return a+b;},0)/validFacts.length;
+  }else if(formula==='weighted'){
+    var sum=0,wUsed=0;
+    supp.forEach(function(s,i){if(facts[i]!=null){var w=Number(s.weight)||0;sum+=facts[i]*w;wUsed+=w;}});
+    if(wUsed>0)value=sum/wUsed;
+  }else{ // percent_of_plan
+    var pcts=[];
+    supp.forEach(function(s,i){if(facts[i]!=null&&plans[i]>0)pcts.push(facts[i]/plans[i]*100);});
+    if(pcts.length){value=pcts.reduce(function(a,b){return a+b;},0)/pcts.length;pct=value;}
+  }
+  if(pct==null&&value!=null&&p.metrics.northStar.target>0&&formula!=='percent_of_plan'){
+    pct=value/p.metrics.northStar.target*100;
+  }
+  return {value:value,pct:pct,hasData:validFacts.length>0};
+}
+// ---- MONTHLY METRIC DATA ENTRY ----
+function openMetricEntryModal(projId){
+  var p=projects.find(function(x){return x.id===projId;});
+  if(!p||!p.metrics||!(p.metrics.supporting||[]).length){alert('У продукта не настроены метрики. Отредактируйте продукт и задайте систему метрик.');return;}
+  if(!isMetricsEditable(p)){alert('Вводить значения метрик может только владелец продукта или администратор.');return;}
+  document.getElementById('me-modal-title').textContent='📊 Ввод метрик — '+p.name;
+  document.getElementById('me-proj-id').value=p.id;
+  var yr=new Date().getFullYear();
+  var sel=document.getElementById('me-period');
+  sel.innerHTML=MONTHS.map(function(m,i){var per=yr+'-'+String(i+1).padStart(2,'0');return '<option value="'+per+'">'+m+' '+yr+'</option>';}).join('');
+  sel.value=currentPeriod();
+  sel.onchange=renderMetricEntryRows;
+  renderMetricEntryRows();
+  document.getElementById('metric-entry-modal').classList.add('open');
+}
+function renderMetricEntryRows(){
+  var projId=+document.getElementById('me-proj-id').value;
+  var p=projects.find(function(x){return x.id===projId;});if(!p)return;
+  var period=document.getElementById('me-period').value;
+  var data=(p.metricData&&p.metricData[period])||{};
+  var html=p.metrics.supporting.map(function(s){
+    var v=data[s.id]||{};
+    return '<div class="fg" style="margin-bottom:4px"><div class="fi"><label>'+s.name+' — план ('+(s.unit||'')+')</label><input type="number" class="me-plan" data-id="'+s.id+'" value="'+(v.plan!=null?v.plan:(s.target||''))+'"></div>'+
+           '<div class="fi"><label>'+s.name+' — факт</label><input type="number" class="me-fact" data-id="'+s.id+'" value="'+(v.fact!=null?v.fact:'')+'"></div></div>';
+  }).join('');
+  document.getElementById('me-rows').innerHTML=html;
+}
+function saveMetricEntry(){
+  var projId=+document.getElementById('me-proj-id').value;
+  var p=projects.find(function(x){return x.id===projId;});if(!p)return;
+  var period=document.getElementById('me-period').value;
+  if(!p.metricData)p.metricData={};
+  if(!p.metricData[period])p.metricData[period]={};
+  document.querySelectorAll('#me-rows .me-plan').forEach(function(inp){
+    var id=+inp.dataset.id;
+    if(!p.metricData[period][id])p.metricData[period][id]={};
+    p.metricData[period][id].plan=inp.value!==''?+inp.value:null;
+  });
+  document.querySelectorAll('#me-rows .me-fact').forEach(function(inp){
+    var id=+inp.dataset.id;
+    if(!p.metricData[period][id])p.metricData[period][id]={};
+    p.metricData[period][id].fact=inp.value!==''?+inp.value:null;
+  });
+  closeModal('metric-entry-modal');
+  renderMetrics();
+  if(typeof syncNow==='function')syncNow();
+}
+// ---- METRICS TAB (Executive Scorecard) ----
+function renderMetrics(){
+  var cont=document.getElementById('metrics-grid');if(!cont)return;
+  var period=currentPeriod();
+  if(!projects.length){cont.innerHTML='<div class="empty">Нет продуктов</div>';return;}
+  cont.innerHTML=projects.map(function(p){
+    var s=SMAP[p.status]||{};
+    if(!p.metrics||!p.metrics.northStar||!(p.metrics.supporting||[]).length){
+      return '<div class="nsc" style="margin-bottom:12px;padding:16px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:700;font-size:14px">'+p.name+'</div><span class="badge '+s.c+'">'+(s.l||'')+'</span></div>'+
+        '<div style="margin-top:10px;font-size:12px;color:var(--muted)">⚠️ Метрики не настроены для этого продукта.</div>'+
+        (isMetricsEditable(p)?'<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="openEditModal('+p.id+')">Настроить метрики</button>':'')+
+        '</div>';
+    }
+    var ns=computeNorthStar(p,period);
+    var nsPct=ns.pct!=null?Math.round(ns.pct):null;
+    var pctColor=nsPct==null?'#8892a4':(nsPct>=70?'#22c55e':nsPct>=40?'#f59e0b':'#ef4444');
+    var suppHtml=p.metrics.supporting.map(function(sm){
+      var d=(p.metricData&&p.metricData[period]&&p.metricData[period][sm.id])||{};
+      var plan=d.plan!=null?d.plan:sm.target;
+      var fact=d.fact!=null?d.fact:null;
+      var pct=(plan&&fact!=null)?Math.round(fact/plan*100):null;
+      var barColor=pct==null?'#8892a4':(pct>=70?'#22c55e':pct>=40?'#f59e0b':'#ef4444');
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">'+
+        '<span style="font-size:12px">'+sm.name+'</span>'+
+        '<div style="display:flex;gap:10px;align-items:center">'+
+          '<span style="font-size:11px;color:var(--muted)">план '+(plan!=null&&plan!==''?plan:'—')+' '+(sm.unit||'')+'</span>'+
+          '<span style="font-size:11px;color:var(--muted)">факт '+(fact!=null?fact:'—')+'</span>'+
+          (pct!=null?'<span style="font-size:11px;font-weight:700;color:'+barColor+'">'+pct+'%</span>':'')+
+        '</div></div>';
+    }).join('');
+    return '<div class="nsc" style="margin-bottom:12px;padding:16px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">'+
+        '<div><div style="font-size:11px;color:var(--muted)">ПРОДУКТ</div><div style="font-size:15px;font-weight:700">'+p.name+'</div></div>'+
+        '<span class="badge '+s.c+'">'+(s.l||'')+'</span>'+
+      '</div>'+
+      '<div style="background:var(--card2);border-radius:8px;padding:10px 12px;margin-bottom:10px">'+
+        '<div style="font-size:11px;color:var(--muted)">NORTH STAR — '+p.metrics.northStar.name+'</div>'+
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px;flex-wrap:wrap;gap:6px">'+
+          '<div style="font-size:20px;font-weight:700;color:var(--accent)">'+(ns.value!=null?(Math.round(ns.value*100)/100):'—')+' '+(p.metrics.northStar.unit||'')+'</div>'+
+          (nsPct!=null?'<div style="font-size:13px;font-weight:700;color:'+pctColor+'">'+nsPct+'% от плана</div>':'')+
+        '</div>'+
+        (nsPct!=null?'<div class="pw" style="margin-top:6px"><div class="pb"><div class="pf" style="width:'+Math.min(100,Math.max(0,nsPct))+'%;background:'+pctColor+'"></div></div></div>':'')+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Поддерживающие метрики ('+(MONTHS[new Date().getMonth()])+')</div>'+
+      suppHtml+
+      (isMetricsEditable(p)?'<button class="btn btn-primary btn-sm" style="margin-top:10px;width:100%" onclick="openMetricEntryModal('+p.id+')">📊 Ввести метрики за '+(MONTHS[new Date().getMonth()])+'</button>':'')+
+      '</div>';
+  }).join('');
+}
+
 // PROJECT CRUD
 function openAddModal(){
   editProjId=null;
   document.getElementById('proj-modal-title').textContent='➕ Новый продукт';
-  ['pm-name','pm-owner','pm-ns','pm-kpi','pm-issues','pm-desc','pm-yearly'].forEach(function(id){document.getElementById(id).value='';});
+  ['pm-name','pm-owner','pm-ns','pm-kpi','pm-issues','pm-desc','pm-yearly','pm-ns-name','pm-ns-unit','pm-ns-target'].forEach(function(id){document.getElementById(id).value='';});
   ['pm-bp','pm-bf','pm-prog'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('pm-dl').value='';
+  document.getElementById('pm-ns-formula').value='percent_of_plan';
+  document.getElementById('pm-supp-list').innerHTML='';
+  addSuppMetricRow();
+  document.getElementById('pm-metrics-lock-note').style.display='none';
+  setMetricsFieldsDisabled(false);
   document.getElementById('proj-modal').classList.add('open');
   // Check for draft
   setTimeout(function(){
@@ -1517,14 +1752,58 @@ function openAddModal(){
     try{var d=JSON.parse(localStorage.getItem('pmo_draft_proj'));if(d&&Object.values(d).some(function(v){return v&&v!==''}))showDraftBanner('proj-modal','pmo_draft_proj',PROJ_FIELDS);}catch(e){}
   },50);
 }
-function openEditModal(id){var p=projects.find(function(x){return x.id===id;});if(!p)return;editProjId=id;document.getElementById('proj-modal-title').textContent='✏️ Редактировать';document.getElementById('pm-name').value=p.name;document.getElementById('pm-stage').value=p.stage;document.getElementById('pm-status').value=p.status;document.getElementById('pm-owner').value=p.owner;document.getElementById('pm-ns').value=p.northStar;document.getElementById('pm-bp').value=p.budgetPlan;document.getElementById('pm-bf').value=p.budgetFact;document.getElementById('pm-dl').value=p.deadline;document.getElementById('pm-prog').value=p.progress;document.getElementById('pm-yearly').value=p.yearlyGoal||'';document.getElementById('pm-kpi').value=(p.kpis||[]).map(function(k){return k.name+': план '+k.plan+', факт '+k.fact;}).join('\n');document.getElementById('pm-issues').value=(p.issues||[]).map(function(i){return i.title;}).join('\n');document.getElementById('pm-desc').value=p.desc||'';document.getElementById('proj-modal').classList.add('open');closePanel();}
+function openEditModal(id){
+  var p=projects.find(function(x){return x.id===id;});if(!p)return;editProjId=id;
+  document.getElementById('proj-modal-title').textContent='✏️ Редактировать';
+  document.getElementById('pm-name').value=p.name;document.getElementById('pm-stage').value=p.stage;document.getElementById('pm-status').value=p.status;document.getElementById('pm-owner').value=p.owner;document.getElementById('pm-ns').value=p.northStar;document.getElementById('pm-bp').value=p.budgetPlan;document.getElementById('pm-bf').value=p.budgetFact;document.getElementById('pm-dl').value=p.deadline;document.getElementById('pm-prog').value=p.progress;document.getElementById('pm-yearly').value=p.yearlyGoal||'';document.getElementById('pm-kpi').value=(p.kpis||[]).map(function(k){return k.name+': план '+k.plan+', факт '+k.fact;}).join('\n');document.getElementById('pm-issues').value=(p.issues||[]).map(function(i){return i.title;}).join('\n');document.getElementById('pm-desc').value=p.desc||'';
+  // Metrics — populate from locked/fixed metric system, default locked unless owner/admin unlocks
+  var supList=document.getElementById('pm-supp-list');supList.innerHTML='';
+  if(p.metrics&&p.metrics.northStar){
+    document.getElementById('pm-ns-name').value=p.metrics.northStar.name||'';
+    document.getElementById('pm-ns-unit').value=p.metrics.northStar.unit||'';
+    document.getElementById('pm-ns-target').value=p.metrics.northStar.target||'';
+    document.getElementById('pm-ns-formula').value=p.metrics.northStar.formula||'percent_of_plan';
+    (p.metrics.supporting||[]).forEach(function(sm){addSuppMetricRow(sm);});
+    if(!(p.metrics.supporting||[]).length)addSuppMetricRow();
+  }else{
+    document.getElementById('pm-ns-name').value='';document.getElementById('pm-ns-unit').value='';document.getElementById('pm-ns-target').value='';
+    document.getElementById('pm-ns-formula').value='percent_of_plan';
+    addSuppMetricRow();
+  }
+  var note=document.getElementById('pm-metrics-lock-note');
+  var editable=isMetricsEditable(p);
+  setMetricsFieldsDisabled(true);
+  note.style.display='block';
+  note.innerHTML=editable
+    ?'🔒 Метрики зафиксированы. <button type="button" class="btn btn-ghost btn-sm" onclick="unlockMetricsEdit()">✏️ Редактировать метрики</button>'
+    :'🔒 Метрики зафиксированы. Изменить может только владелец продукта или администратор.';
+  document.getElementById('proj-modal').classList.add('open');closePanel();
+}
 function saveProject(){
   var name=document.getElementById('pm-name').value.trim();if(!name){alert('Введите название');return;}
   var kpis=document.getElementById('pm-kpi').value.split('\n').filter(function(l){return l.trim();}).map(function(l){return{name:l.split(':')[0].trim(),plan:(l.match(/план\s*([^,]+)/i)||['','—'])[1].trim(),fact:(l.match(/факт\s*([^,\n]+)/i)||['','—'])[1].trim(),ok:null};});
   var issues=document.getElementById('pm-issues').value.split('\n').filter(function(l){return l.trim();}).map(function(t){return{title:t,severity:'medium',date:new Date().toLocaleDateString('ru')};});
-  var data={name:name,stage:document.getElementById('pm-stage').value,status:document.getElementById('pm-status').value,owner:document.getElementById('pm-owner').value||'—',northStar:document.getElementById('pm-ns').value||'—',budgetPlan:+document.getElementById('pm-bp').value||0,budgetFact:+document.getElementById('pm-bf').value||0,deadline:document.getElementById('pm-dl').value||'—',progress:Math.min(100,Math.max(0,+document.getElementById('pm-prog').value||0)),yearlyGoal:document.getElementById('pm-yearly').value,kpis:kpis,issues:issues,desc:document.getElementById('pm-desc').value};
+
+  // ---- METRICS: mandatory at creation; locked afterwards unless owner/admin unlocked the fields ----
+  var metricsFieldsDisabled=document.getElementById('pm-ns-name').disabled;
+  var metricsBlock;
+  if(editProjId&&metricsFieldsDisabled){
+    var existingP=projects.find(function(x){return x.id===editProjId;});
+    metricsBlock=existingP?existingP.metrics:null;
+  }else{
+    var nsName=document.getElementById('pm-ns-name').value.trim();
+    var supp=collectSuppMetrics();
+    if(!nsName){alert('Укажите название North Star метрики');return;}
+    if(!supp.length){alert('Добавьте хотя бы одну поддерживающую метрику — из неё считается North Star');return;}
+    metricsBlock={
+      northStar:{name:nsName,unit:document.getElementById('pm-ns-unit').value.trim(),target:+document.getElementById('pm-ns-target').value||0,formula:document.getElementById('pm-ns-formula').value},
+      supporting:supp
+    };
+  }
+
+  var data={name:name,stage:document.getElementById('pm-stage').value,status:document.getElementById('pm-status').value,owner:document.getElementById('pm-owner').value||'—',northStar:document.getElementById('pm-ns').value||'—',budgetPlan:+document.getElementById('pm-bp').value||0,budgetFact:+document.getElementById('pm-bf').value||0,deadline:document.getElementById('pm-dl').value||'—',progress:Math.min(100,Math.max(0,+document.getElementById('pm-prog').value||0)),yearlyGoal:document.getElementById('pm-yearly').value,kpis:kpis,issues:issues,desc:document.getElementById('pm-desc').value,metrics:metricsBlock};
   if(editProjId){var idx=projects.findIndex(function(x){return x.id===editProjId;});if(idx>=0)projects[idx]=Object.assign({},projects[idx],data);}
-  else{var nid=Math.max.apply(null,[0].concat(projects.map(function(p){return p.id;})))+1;projects.push(Object.assign({id:nid,ownerColor:ACOLS[nid%ACOLS.length],monthlyPlan:MONTHS.map(function(m){return{month:m,goal:null,actual:null,notes:''};})},data));}
+  else{var nid=Math.max.apply(null,[0].concat(projects.map(function(p){return p.id;})))+1;projects.push(Object.assign({id:nid,ownerColor:ACOLS[nid%ACOLS.length],monthlyPlan:MONTHS.map(function(m){return{month:m,goal:null,actual:null,notes:''};}),metricData:{}},data));}
   draftClear('pmo_draft_proj');
   closeModal('proj-modal');renderAll();
 }
@@ -1937,9 +2216,9 @@ function renderCalendar(){
 
 
 // TABS
-function setTab(tab){activeTab=tab;ALL_TABS.forEach(function(t){var el=document.getElementById('tab-'+t);if(el)el.style.display=t===tab?'block':'none';});document.querySelectorAll('.tab').forEach(function(el){el.classList.remove('active');if(el.getAttribute('onclick')==="setTab('"+tab+"')")el.classList.add('active');});if(tab==='overview'){renderCharts();renderWorkload();}if(tab==='kanban')renderKanban();if(tab==='plans'){populatePlanSel();renderPlans();}if(tab==='tasks'){populateTaskFilters();renderTasks();}if(tab==='collab'){populateTaskFilters();renderCollab();}if(tab==='gantt'){populateGanttFilters();renderGantt();}if(tab==='calendar'){populateCalendarFilters();renderCalendar();}if(tab==='admin')setAdminTab(activeAdminTab);}
+function setTab(tab){activeTab=tab;ALL_TABS.forEach(function(t){var el=document.getElementById('tab-'+t);if(el)el.style.display=t===tab?'block':'none';});document.querySelectorAll('.tab').forEach(function(el){el.classList.remove('active');if(el.getAttribute('onclick')==="setTab('"+tab+"')")el.classList.add('active');});if(tab==='overview'){renderCharts();renderWorkload();}if(tab==='metrics')renderMetrics();if(tab==='kanban')renderKanban();if(tab==='plans'){populatePlanSel();renderPlans();}if(tab==='tasks'){populateTaskFilters();renderTasks();}if(tab==='collab'){populateTaskFilters();renderCollab();}if(tab==='gantt'){populateGanttFilters();renderGantt();}if(tab==='calendar'){populateCalendarFilters();renderCalendar();}if(tab==='admin')setAdminTab(activeAdminTab);}
 
-function renderAll(){renderNotifs();renderSummary();renderNS();renderTable();updateOwnerFilter();populatePlanSel();populateTaskFilters();if(activeTab==='overview'){renderCharts();renderWorkload();}if(activeTab==='kanban')renderKanban();if(activeTab==='plans')renderPlans();if(activeTab==='tasks')renderTasks();if(activeTab==='collab')renderCollab();if(activeTab==='gantt')renderGantt();if(activeTab==='calendar')renderCalendar();if(activeTab==='admin')setAdminTab(activeAdminTab);}
+function renderAll(){renderNotifs();renderSummary();renderNS();renderTable();updateOwnerFilter();populatePlanSel();populateTaskFilters();if(activeTab==='overview'){renderCharts();renderWorkload();}if(activeTab==='metrics')renderMetrics();if(activeTab==='kanban')renderKanban();if(activeTab==='plans')renderPlans();if(activeTab==='tasks')renderTasks();if(activeTab==='collab')renderCollab();if(activeTab==='gantt')renderGantt();if(activeTab==='calendar')renderCalendar();if(activeTab==='admin')setAdminTab(activeAdminTab);}
 
 document.getElementById('today-date').textContent=new Date().toLocaleDateString('ru',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 initLogin();
