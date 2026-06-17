@@ -748,6 +748,9 @@ let projects=[
   {id:5,name:'Т-Клоуд',stage:'Разработка',status:'on_track',owner:'Тохир Ю.',ownerColor:'#22c55e',northStar:'Рост прихода',budgetPlan:0,budgetFact:0,deadline:'2026-12-31',progress:15,yearlyGoal:'Рост через 1С Клоуд, Backup SaaS, YouTube и партнёров',monthlyPlan:MONTHS.map(function(m){return{month:m,goal:null,actual:null,notes:''}}),kpis:[{name:'Приход',plan:'—',fact:'—',ok:null},{name:'1С Клоуд',plan:'—',fact:'—',ok:null},{name:'Backup SaaS',plan:'—',fact:'—',ok:null}],issues:[],desc:'Облачные решения.',metrics:{northStar:{name:'MRR',unit:'сум',target:null,formula:'percent_of_plan'},supporting:[{id:'enterprise_clients',name:'Enterprise-клиенты',unit:'шт',target:null,weight:1},{id:'sla',name:'SLA',unit:'%',target:null,weight:1},{id:'pipeline',name:'Движение pipeline',unit:'',target:null,weight:1}]},metricData:{}},
   {id:6,name:'Финанс',stage:'Запуск',status:'on_track',owner:'Акмал Х.',ownerColor:'#f59e0b',northStar:'Контроль бюджетов всех продуктов',budgetPlan:0,budgetFact:0,deadline:'2026-12-31',progress:30,yearlyGoal:'Прозрачный бюджетный контроль',monthlyPlan:MONTHS.map(function(m){return{month:m,goal:null,actual:null,notes:''}}),kpis:[{name:'Исполнение бюджета',plan:'100%',fact:'—',ok:null}],issues:[],desc:'Финансовый контроль.'}
 ];
+// Keep an untouched reference to the original seed so loadFromServer() can
+// backfill metrics into older server-side data that predates this field.
+var SEED_PROJECTS=projects.slice();
 
 let biTasks=[
   {id:1,projectId:1,title:'Новые тарифы — разработка и запуск',owner:'Нозим А.',deadline:'2026-07-01',status:'inprogress',sprint:'Q3 2026',priority:'high',goal:'',kpis:[],issues:[],desc:''},
@@ -815,11 +818,31 @@ function syncToServer(){
   },400);
 }
 function syncNow(){syncToServer();}
+// One-time self-healing migration: if the server's stored copy of a project
+// predates the metrics feature (no metrics/metricData), backfill it from the
+// original hardcoded seed so older server data doesn't wipe out metrics that
+// were only ever defined in this file, never pushed to the server before sync existed.
+function mergeSeedMetrics(serverProjects){
+  var changed=false;
+  serverProjects.forEach(function(p){
+    var seed=SEED_PROJECTS.find(function(s){return s.id===p.id;});
+    if(seed&&seed.metrics&&(!p.metrics||!p.metrics.northStar)){
+      p.metrics=seed.metrics;
+      if(!p.metricData||!Object.keys(p.metricData).length)p.metricData=seed.metricData||{};
+      changed=true;
+    }
+  });
+  return changed;
+}
 function loadFromServer(){
   return fetch('/api/data').then(function(r){return r.json();}).then(function(d){
     if(d&&d.ok){
       if(Array.isArray(d.users))users=d.users;
-      if(Array.isArray(d.projects))projects=d.projects;
+      if(Array.isArray(d.projects)){
+        var changed=mergeSeedMetrics(d.projects);
+        projects=d.projects;
+        if(changed)syncToServer();
+      }
       if(Array.isArray(d.tasks))biTasks=d.tasks;
       if(Array.isArray(d.collabRequests))collabRequests=d.collabRequests;
     }
