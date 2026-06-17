@@ -121,6 +121,23 @@ app.post('/api/data',async(req,res)=>{
   const{users,projects,tasks,collabRequests}=req.body;
   try{
     if(db){
+      // Delete rows that the client removed (upsert below never deletes on its own)
+      if(Array.isArray(users)){
+        if(users.length){const ids=users.map(u=>u.id);await db.execute(`DELETE FROM users WHERE id NOT IN (${ids.map(()=>'?').join(',')})`,ids);}
+        else await db.execute('DELETE FROM users');
+      }
+      if(Array.isArray(projects)){
+        if(projects.length){const ids=projects.map(p=>p.id);await db.execute(`DELETE FROM projects WHERE id NOT IN (${ids.map(()=>'?').join(',')})`,ids);}
+        else await db.execute('DELETE FROM projects');
+      }
+      if(Array.isArray(tasks)){
+        if(tasks.length){const ids=tasks.map(t=>t.id);await db.execute(`DELETE FROM tasks WHERE id NOT IN (${ids.map(()=>'?').join(',')})`,ids);}
+        else await db.execute('DELETE FROM tasks');
+      }
+      if(Array.isArray(collabRequests)){
+        if(collabRequests.length){const ids=collabRequests.map(r=>r.id);await db.execute(`DELETE FROM collab_requests WHERE id NOT IN (${ids.map(()=>'?').join(',')})`,ids);}
+        else await db.execute('DELETE FROM collab_requests');
+      }
       for(const u of(users||[])){
         await db.execute(
           'INSERT INTO users(id,name,role,product,email,pos,password,access)VALUES(?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),role=VALUES(role),product=VALUES(product),email=VALUES(email),pos=VALUES(pos),password=VALUES(password),access=VALUES(access)',
