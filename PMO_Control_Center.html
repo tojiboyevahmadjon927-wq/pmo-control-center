@@ -166,8 +166,10 @@ tbody td{padding:9px 10px;vertical-align:middle}
 /* MODAL */
 .modal{position:fixed;inset:0;background:#00000066;z-index:300;display:none;align-items:center;justify-content:center;padding:15px}
 .modal.open{display:flex}
-.mbox{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:20px;width:620px;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow-md)}
-.mbox h2{font-size:14px;font-weight:700;margin-bottom:15px}
+.mbox{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:20px;width:620px;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow-md);position:relative}
+.mbox h2{font-size:14px;font-weight:700;margin-bottom:15px;padding-right:28px}
+.mclose{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:3px 9px;border-radius:7px;line-height:1;z-index:5}
+.mclose:hover{background:var(--card2);color:var(--red)}
 .fg{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .fi{display:flex;flex-direction:column;gap:3px}
 .fi.full{grid-column:1/-1}
@@ -552,8 +554,9 @@ tbody td{padding:9px 10px;vertical-align:middle}
 </div>
 
 <!-- PROJECT MODAL -->
-<div class="modal" id="proj-modal">
+<div class="modal" id="proj-modal" onclick="if(event.target===this)closeModal('proj-modal')">
   <div class="mbox">
+    <button class="mclose" onclick="closeModal('proj-modal')" title="Закрыть">✕</button>
     <h2 id="proj-modal-title">➕ Новый продукт</h2>
     <div class="fg">
       <div class="fi full"><label>Название *</label><input id="pm-name"></div>
@@ -595,8 +598,9 @@ tbody td{padding:9px 10px;vertical-align:middle}
 </div>
 
 <!-- METRIC ENTRY MODAL -->
-<div class="modal" id="metric-entry-modal">
+<div class="modal" id="metric-entry-modal" onclick="if(event.target===this)closeModal('metric-entry-modal')">
   <div class="mbox">
+    <button class="mclose" onclick="closeModal('metric-entry-modal')" title="Закрыть">✕</button>
     <h2 id="me-modal-title">📊 Ввод метрик</h2>
     <input type="hidden" id="me-proj-id">
     <div class="fg">
@@ -608,8 +612,9 @@ tbody td{padding:9px 10px;vertical-align:middle}
 </div>
 
 <!-- TASK MODAL -->
-<div class="modal" id="task-modal">
+<div class="modal" id="task-modal" onclick="if(event.target===this)closeModal('task-modal')">
   <div class="mbox">
+    <button class="mclose" onclick="closeModal('task-modal')" title="Закрыть">✕</button>
     <h2 id="task-modal-title">➕ Новая задача</h2>
     <div class="fg">
       <div class="fi full"><label>Название *</label><input id="tm-title"></div>
@@ -632,8 +637,9 @@ tbody td{padding:9px 10px;vertical-align:middle}
 </div>
 
 <!-- SUBTASK MODAL -->
-<div class="modal" id="subtask-modal">
+<div class="modal" id="subtask-modal" onclick="if(event.target===this)closeModal('subtask-modal')">
   <div class="mbox" style="width:520px">
+    <button class="mclose" onclick="closeModal('subtask-modal')" title="Закрыть">✕</button>
     <h2 id="subtask-modal-title">➕ Новая подзадача</h2>
     <input type="hidden" id="stm-task-id">
     <input type="hidden" id="stm-sub-id">
@@ -649,8 +655,9 @@ tbody td{padding:9px 10px;vertical-align:middle}
 </div>
 
 <!-- COLLAB REQUEST MODAL -->
-<div class="modal" id="req-modal">
+<div class="modal" id="req-modal" onclick="if(event.target===this)closeModal('req-modal')">
   <div class="mbox" style="width:540px">
+    <button class="mclose" onclick="closeModal('req-modal')" title="Закрыть">✕</button>
     <h2 id="req-modal-title">➕ Новый запрос</h2>
     <div class="fg">
       <div class="fi full"><label>Название запроса *</label><input id="rm-title" placeholder="Что нужно сделать?"></div>
@@ -665,8 +672,9 @@ tbody td{padding:9px 10px;vertical-align:middle}
 </div>
 
 <!-- PROFILE MODAL -->
-<div class="modal" id="profile-modal">
+<div class="modal" id="profile-modal" onclick="if(event.target===this)closeModal('profile-modal')">
   <div class="mbox" style="width:420px">
+    <button class="mclose" onclick="closeModal('profile-modal')" title="Закрыть">✕</button>
     <h2>👤 Мой профиль</h2>
     <div id="profile-info" style="margin-bottom:16px"></div>
     <div class="divider"></div>
@@ -686,8 +694,9 @@ tbody td{padding:9px 10px;vertical-align:middle}
 </div>
 
 <!-- USER MODAL (admin) -->
-<div class="modal" id="user-modal">
+<div class="modal" id="user-modal" onclick="if(event.target===this)closeModal('user-modal')">
   <div class="mbox" style="width:480px">
+    <button class="mclose" onclick="closeModal('user-modal')" title="Закрыть">✕</button>
     <h2 id="user-modal-title">➕ Новый пользователь</h2>
     <div class="fg">
       <div class="fi full"><label>Имя Фамилия *</label><input id="um-name"></div>
@@ -781,6 +790,13 @@ function dln(d){return Math.round((new Date(d)-new Date())/86400000);}
 function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
 function ucolor(uid){return ACOLS[(uid||1)%ACOLS.length];}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Escape')return;
+  var openModal=document.querySelector('.modal.open');
+  if(openModal){closeModal(openModal.id);return;}
+  var panel=document.getElementById('side-panel');
+  if(panel&&panel.classList.contains('open')){closePanel();}
+});
 
 // ============================================================
 // DRAFT AUTO-SAVE SYSTEM
