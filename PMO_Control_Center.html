@@ -207,6 +207,8 @@ tbody td{padding:9px 10px;vertical-align:middle}
 .role-manager{background:#ede9fe;color:#6d28d9}
 .role-senior{background:#dcfce7;color:#15803d}
 .role-member{background:#f1f5f9;color:#475569}
+.role-custom{background:#ede9fe;color:#6d28d9}
+.role-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:7px;display:flex;align-items:center;gap:10px;box-shadow:var(--shadow)}
 [data-theme="dark"] .role-admin{background:#dc262622;color:#f87171}
 [data-theme="dark"] .role-ceo{background:#4f6ef722;color:#4f6ef7}
 [data-theme="dark"] .role-head{background:#d9770622;color:#fbbf24}
@@ -500,12 +502,14 @@ tbody td{padding:9px 10px;vertical-align:middle}
   </div>
   <div class="admin-tabs">
     <div class="atab active" onclick="setAdminTab('users')">👥 Пользователи</div>
+    <div class="atab" onclick="setAdminTab('roles')">🛡 Роли</div>
     <div class="atab" onclick="setAdminTab('products')">📦 Продукты</div>
     <div class="atab" onclick="setAdminTab('system')">🔧 Система</div>
     <div class="atab" onclick="setAdminTab('reports')">📊 Отчёты</div>
     <div class="atab" onclick="setAdminTab('trash')">🗑 Корзина</div>
   </div>
   <div id="atab-users"></div>
+  <div id="atab-roles" style="display:none"></div>
   <div id="atab-products" style="display:none"></div>
   <div id="atab-system" style="display:none"></div>
   <div id="atab-reports" style="display:none"></div>
@@ -706,7 +710,7 @@ tbody td{padding:9px 10px;vertical-align:middle}
     <h2 id="user-modal-title">➕ Новый пользователь</h2>
     <div class="fg">
       <div class="fi full"><label>Имя Фамилия *</label><input id="um-name"></div>
-      <div class="fi"><label>Роль</label><select id="um-role" onchange="renderAccessChecks(ROLE_TABS[this.value]||[],[]);"><option value="admin">⚙️ Админ</option><option value="ceo">👑 Руководитель</option><option value="head">🏢 Начальник</option><option value="manager" selected>📋 Проект-менеджер</option><option value="senior">⭐ Старший</option><option value="member">👤 Сотрудник</option></select></div>
+      <div class="fi"><label>Роль</label><select id="um-role" onchange="renderAccessChecks(roleTabsOf(this.value)||[],[]);"><option value="member">👤 Сотрудник</option></select></div>
       <div class="fi"><label>Продукт / Отдел</label><input id="um-product"></div>
       <div class="fi full"><label>Email</label><input id="um-email" type="email"></div>
       <div class="fi full"><label>Должность</label><input id="um-pos"></div>
@@ -716,6 +720,34 @@ tbody td{padding:9px 10px;vertical-align:middle}
       </div>
     </div>
     <div class="fact"><button class="btn btn-ghost" onclick="closeModal('user-modal')">Отмена</button><button class="btn btn-primary" onclick="saveUser()">Сохранить</button></div>
+  </div>
+</div>
+
+<!-- ROLE MODAL (admin) -->
+<div class="modal" id="role-modal" onclick="if(event.target===this)closeModal('role-modal')">
+  <div class="mbox" style="width:480px">
+    <button class="mclose" onclick="closeModal('role-modal')" title="Закрыть">✕</button>
+    <h2 id="role-modal-title">➕ Новая роль</h2>
+    <div class="fg">
+      <div class="fi full"><label>Название роли *</label><input id="rm-label" placeholder="Например: Финансист"></div>
+      <div class="fi"><label>Видимость продуктов</label>
+        <select id="rm-scope">
+          <option value="own">Только свои продукты</option>
+          <option value="all">Все продукты</option>
+        </select>
+      </div>
+      <div class="fi"><label>Цвет значка</label><input id="rm-color" type="color" value="#6d28d9" style="height:34px;padding:2px"></div>
+      <div class="fi"><label>Может редактировать</label>
+        <select id="rm-edit"><option value="0">Нет (только просмотр своих)</option><option value="1">Да</option></select>
+      </div>
+      <div class="fi"><label>Управляет пользователями</label>
+        <select id="rm-manage"><option value="0">Нет</option><option value="1">Да</option></select>
+      </div>
+      <div class="fi full"><label>Доступные разделы</label>
+        <div id="rm-tabs-checks" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;background:var(--card2);padding:10px;border-radius:7px;border:1px solid var(--border)"></div>
+      </div>
+    </div>
+    <div class="fact"><button class="btn btn-ghost" onclick="closeModal('role-modal')">Отмена</button><button class="btn btn-primary" onclick="saveRole()">Сохранить</button></div>
   </div>
 </div>
 
@@ -760,9 +792,26 @@ const ROLE_EDIT={admin:true,ceo:true,head:true,manager:true,senior:false,member:
 const ROLE_MANAGE_USERS={admin:true,ceo:true,head:false,manager:false,senior:false,member:false};
 const ROLE_LABELS={admin:'⚙️ Админ',ceo:'👑 Руководитель',head:'🏢 Начальник',manager:'📋 Проект-менеджер',senior:'⭐ Старший',member:'👤 Сотрудник'};
 const ROLE_BADGE={admin:'role-admin',ceo:'role-ceo',head:'role-head',manager:'role-manager',senior:'role-senior',member:'role-member'};
-function roleScope(){return (currentUser&&ROLE_SCOPE[currentUser.role])||'own';}
-function canEditData(){return !!(currentUser&&ROLE_EDIT[currentUser.role]);}
-function isAdminRole(){return !!(currentUser&&ROLE_MANAGE_USERS[currentUser.role]);}
+const STATIC_ROLE_IDS=['admin','ceo','head','manager','senior','member'];
+
+// ---- DYNAMIC ROLE LOOKUP (static roles above + admin-defined custom roles from Admin → Роли) ----
+// Custom roles are looked up first so an admin can also override a static role id if they reuse it,
+// but in practice custom role ids are expected to be distinct slugs.
+function findCustomRole(roleId){return (customRoles||[]).find(function(r){return r.id===roleId;});}
+function roleTabsOf(roleId){var cr=findCustomRole(roleId);if(cr)return cr.tabs||[];return ROLE_TABS[roleId]||[];}
+function roleScopeOf(roleId){var cr=findCustomRole(roleId);if(cr)return cr.scope||'own';return ROLE_SCOPE[roleId]||'own';}
+function roleEditOf(roleId){var cr=findCustomRole(roleId);if(cr)return !!cr.canEdit;return !!ROLE_EDIT[roleId];}
+function roleManageUsersOf(roleId){var cr=findCustomRole(roleId);if(cr)return !!cr.manageUsers;return !!ROLE_MANAGE_USERS[roleId];}
+function roleLabelOf(roleId){var cr=findCustomRole(roleId);if(cr)return cr.label||roleId;return ROLE_LABELS[roleId]||roleId;}
+function roleBadgeClassOf(roleId){return findCustomRole(roleId)?'role-custom':(ROLE_BADGE[roleId]||'role-member');}
+function roleBadgeStyleOf(roleId){var cr=findCustomRole(roleId);if(!cr)return'';var c=cr.color||'#6d28d9';return 'background:'+c+'22;color:'+c;}
+function allRoleOptions(){
+  var statics=STATIC_ROLE_IDS.map(function(id){return {id:id,label:ROLE_LABELS[id]};});
+  return statics.concat((customRoles||[]).map(function(r){return {id:r.id,label:r.label};}));
+}
+function roleScope(){return currentUser?roleScopeOf(currentUser.role):'own';}
+function canEditData(){return !!currentUser&&roleEditOf(currentUser.role);}
+function isAdminRole(){return !!currentUser&&roleManageUsersOf(currentUser.role);}
 
 // DATA
 let projects=[
@@ -799,6 +848,10 @@ let users=[
 ];
 
 let collabRequests=[];
+// Custom roles created by the admin from Admin → Роли. Each:
+// {id,label,tabs:[...ALL_TABS subset],scope:'all'|'own',canEdit:bool,manageUsers:bool,color:'#hex'}
+let customRoles=[];
+let editRoleId=null;
 let currentUser=null,editProjId=null,editTaskId=null,editUserId=null;
 let sortFld=null,sortDir=1,activeTab='overview',activeAdminTab='users';
 let charts={};
@@ -838,7 +891,7 @@ function syncToServer(){
     fetch('/api/data',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({users:users,projects:projects,tasks:biTasks,collabRequests:collabRequests})
+      body:JSON.stringify({users:users,projects:projects,tasks:biTasks,collabRequests:collabRequests,customRoles:customRoles})
     }).catch(function(e){console.warn('Sync to server failed:',e);});
   },400);
 }
@@ -870,6 +923,7 @@ function loadFromServer(){
       }
       if(Array.isArray(d.tasks))biTasks=d.tasks;
       if(Array.isArray(d.collabRequests))collabRequests=d.collabRequests;
+      if(Array.isArray(d.customRoles))customRoles=d.customRoles;
     }
   }).catch(function(e){console.warn('Не удалось загрузить данные с сервера, используется локальная копия:',e);}).then(function(){DATA_LOADED=true;});
 }
@@ -986,7 +1040,7 @@ function doLogout(){
 }
 function buildTabs(){
   if(!currentUser)return;
-  var roleAccess=ROLE_TABS[currentUser.role]||ALL_TABS;
+  var roleAccess=roleTabsOf(currentUser.role);if(!roleAccess||!roleAccess.length)roleAccess=ALL_TABS;
   var saved=currentUser.access||[];
   var access;
   if(saved.length){
@@ -997,12 +1051,12 @@ function buildTabs(){
   var html=access.filter(function(t){return TAB_LABELS[t];}).map(function(t){return '<div class="tab" onclick="setTab(\''+t+'\')">'+TAB_LABELS[t]+'</div>';}).join('');
   document.getElementById('main-tabs').innerHTML=html;
 }
-function canAccess(tab){if(!currentUser)return false;var a=currentUser.access||ROLE_TABS[currentUser.role]||[];return a.indexOf(tab)>=0;}
+function canAccess(tab){if(!currentUser)return false;var a=currentUser.access||roleTabsOf(currentUser.role)||[];return a.indexOf(tab)>=0;}
 
 // PROFILE
 function openProfileModal(){
   if(!currentUser)return;
-  var rl=ROLE_LABELS[currentUser.role]||'';
+  var rl=roleLabelOf(currentUser.role)||'';
   document.getElementById('profile-info').innerHTML=
     '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--card2);border-radius:8px">'+
     '<div class="avatar" style="background:'+ucolor(currentUser.id)+';width:40px;height:40px;font-size:14px">'+ini(currentUser.name)+'</div>'+
@@ -2029,17 +2083,15 @@ function toggleSubtaskChecklist(taskId,subId,idx){
 }
 
 // ADMIN
-function setAdminTab(tab){activeAdminTab=tab;document.querySelectorAll('.atab').forEach(function(el,i){el.classList.toggle('active',['users','products','system','reports','trash'][i]===tab);});['users','products','system','reports','trash'].forEach(function(t){var el=document.getElementById('atab-'+t);if(el)el.style.display=t===tab?'block':'none';});if(tab==='users')renderAdminUsers();else if(tab==='products')renderAdminProducts();else if(tab==='system')renderAdminSystem();else if(tab==='reports')renderAdminReports();else if(tab==='trash')renderAdminTrash();}
+function setAdminTab(tab){activeAdminTab=tab;document.querySelectorAll('.atab').forEach(function(el,i){el.classList.toggle('active',['users','roles','products','system','reports','trash'][i]===tab);});['users','roles','products','system','reports','trash'].forEach(function(t){var el=document.getElementById('atab-'+t);if(el)el.style.display=t===tab?'block':'none';});if(tab==='users')renderAdminUsers();else if(tab==='roles')renderAdminRoles();else if(tab==='products')renderAdminProducts();else if(tab==='system')renderAdminSystem();else if(tab==='reports')renderAdminReports();else if(tab==='trash')renderAdminTrash();}
 function renderAdminUsers(){
   var cont=document.getElementById('atab-users');
-  var rl=ROLE_BADGE;
-  var rn=ROLE_LABELS;
   var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:13px"><span style="font-size:13px;font-weight:700">👥 Пользователи ('+users.length+')</span><button class="btn btn-primary btn-sm" onclick="openAddUserModal()">+ Добавить</button></div>';
   users.forEach(function(u){
     html+='<div class="user-card"><div class="avatar" style="background:'+ucolor(u.id)+';width:34px;height:34px;font-size:12px">'+ini(u.name)+'</div>';
     html+='<div style="flex:1"><div style="font-size:13px;font-weight:700">'+u.name+'</div><div style="font-size:10px;color:#8892a4;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap"><span>'+u.email+'</span><span>'+u.pos+'</span><span>📁 '+u.product+'</span></div>';
     html+='<div style="font-size:10px;color:#4f6ef7;margin-top:3px">Доступ: '+(u.access||[]).map(function(t){return TAB_LABELS[t]||t;}).join(', ')+'</div></div>';
-    html+='<span class="role-badge '+rl[u.role]+'">'+rn[u.role]+'</span>';
+    html+='<span class="role-badge '+roleBadgeClassOf(u.role)+'" style="'+roleBadgeStyleOf(u.role)+'">'+roleLabelOf(u.role)+'</span>';
     html+='<div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm" onclick="openEditUserModal('+u.id+')">✏️</button>';
     if(u.id!==currentUser.id)html+='<button class="btn btn-red btn-sm" onclick="deleteUser('+u.id+')">🗑</button>';
     html+='<button class="btn btn-yellow btn-sm" onclick="adminResetPass('+u.id+')" title="Сбросить пароль">🔑</button></div></div>';
@@ -2049,18 +2101,123 @@ function renderAdminUsers(){
 function openAddUserModal(){
   editUserId=null;document.getElementById('user-modal-title').textContent='➕ Новый пользователь';
   ['um-name','um-product','um-email','um-pos','um-pass'].forEach(function(id){document.getElementById(id).value='';});
-  document.getElementById('um-role').value='member';
-  renderAccessChecks(ROLE_TABS['member'],[]);
+  populateRoleSelect('member');
+  renderAccessChecks(roleTabsOf('member'),[]);
   document.getElementById('user-modal').classList.add('open');
 }
 function openEditUserModal(id){
   var u=users.find(function(x){return x.id===id;});if(!u)return;
   editUserId=id;document.getElementById('user-modal-title').textContent='✏️ Редактировать';
-  document.getElementById('um-name').value=u.name;document.getElementById('um-role').value=u.role;
+  document.getElementById('um-name').value=u.name;
+  populateRoleSelect(u.role);
   document.getElementById('um-product').value=u.product;document.getElementById('um-email').value=u.email;
   document.getElementById('um-pos').value=u.pos||'';document.getElementById('um-pass').value='';
-  renderAccessChecks(u.access||ROLE_TABS[u.role]||[],u.access||[]);
+  renderAccessChecks(u.access||roleTabsOf(u.role)||[],u.access||[]);
   document.getElementById('user-modal').classList.add('open');
+}
+function populateRoleSelect(selectedId){
+  var sel=document.getElementById('um-role');if(!sel)return;
+  sel.innerHTML=allRoleOptions().map(function(r){return '<option value="'+r.id+'">'+r.label+'</option>';}).join('');
+  sel.value=selectedId;
+}
+
+// ---- ROLES TAB (Admin → Роли): manual role catalog with per-role section access ----
+function usersCountForRole(roleId){return users.filter(function(u){return u.role===roleId;}).length;}
+function renderAdminRoles(){
+  var cont=document.getElementById('atab-roles');if(!cont)return;
+  var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:13px">'+
+    '<span style="font-size:13px;font-weight:700">🛡 Роли ('+(STATIC_ROLE_IDS.length+customRoles.length)+')</span>'+
+    '<button class="btn btn-primary btn-sm" onclick="openAddRoleModal()">+ Новая роль</button></div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Базовые роли заданы системой и недоступны для удаления. Создавайте свои роли с нужным набором разделов — изменения сразу применяются ко всем пользователям этой роли.</div>';
+  html+='<div style="font-size:11px;font-weight:700;margin-bottom:6px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Базовые роли</div>';
+  STATIC_ROLE_IDS.forEach(function(id){
+    html+=roleCardHtml(id,ROLE_LABELS[id],roleTabsOf(id),roleScopeOf(id),roleEditOf(id),roleManageUsersOf(id),false);
+  });
+  html+='<div style="font-size:11px;font-weight:700;margin:14px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Пользовательские роли ('+customRoles.length+')</div>';
+  if(!customRoles.length)html+='<div class="empty" style="padding:16px">Пока нет ни одной пользовательской роли. Нажмите «+ Новая роль».</div>';
+  customRoles.forEach(function(r){
+    html+=roleCardHtml(r.id,r.label,r.tabs||[],r.scope||'own',!!r.canEdit,!!r.manageUsers,true);
+  });
+  cont.innerHTML=html;
+}
+function roleCardHtml(id,label,tabs,scope,canEdit,manageUsers,isCustom){
+  var tabsTxt=tabs.length?tabs.map(function(t){return TAB_LABELS[t]||t;}).join(', '):'нет разделов';
+  var cnt=usersCountForRole(id);
+  var html='<div class="role-card"><span class="role-badge '+roleBadgeClassOf(id)+'" style="'+roleBadgeStyleOf(id)+'">'+label+'</span>';
+  html+='<div style="flex:1"><div style="font-size:11px;color:var(--muted)">'+tabsTxt+'</div>';
+  html+='<div style="font-size:10px;color:#8892a4;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">'+
+    '<span>'+(scope==='all'?'🌐 Все продукты':'🔒 Только свои продукты')+'</span>'+
+    '<span>'+(canEdit?'✏️ Может редактировать':'👁 Только просмотр')+'</span>'+
+    (manageUsers?'<span>👥 Управляет пользователями</span>':'')+
+    '<span>👤 '+cnt+' пользователь(ей)</span>'+
+  '</div></div>';
+  if(isCustom){
+    html+='<div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm" onclick="openEditRoleModal(\''+id+'\')">✏️</button>'+
+      '<button class="btn btn-red btn-sm" onclick="deleteRole(\''+id+'\')">🗑</button></div>';
+  }else{
+    html+='<div style="font-size:10px;color:var(--muted)">системная</div>';
+  }
+  html+='</div>';
+  return html;
+}
+function slugifyRoleLabel(label){
+  var s=label.trim().toLowerCase().replace(/[^a-z0-9а-яё]+/gi,'-').replace(/^-+|-+$/g,'');
+  if(!s)s='role';
+  var base='custom-'+s,id=base,n=2;
+  while(STATIC_ROLE_IDS.indexOf(id)>=0||customRoles.some(function(r){return r.id===id;})){id=base+'-'+n;n++;}
+  return id;
+}
+function renderRoleTabsChecks(selectedTabs){
+  var wrap=document.getElementById('rm-tabs-checks');if(!wrap)return;
+  wrap.innerHTML=ALL_TABS.map(function(t){
+    var checked=(selectedTabs||[]).indexOf(t)>=0;
+    return '<label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer"><input type="checkbox" value="'+t+'"'+(checked?' checked':'')+' style="accent-color:#4f6ef7">'+TAB_LABELS[t]+'</label>';
+  }).join('');
+}
+function getSelectedRoleTabs(){var cbs=document.getElementById('rm-tabs-checks').querySelectorAll('input:checked');return Array.from(cbs).map(function(cb){return cb.value;});}
+function openAddRoleModal(){
+  editRoleId=null;
+  document.getElementById('role-modal-title').textContent='➕ Новая роль';
+  document.getElementById('rm-label').value='';
+  document.getElementById('rm-scope').value='own';
+  document.getElementById('rm-color').value='#6d28d9';
+  document.getElementById('rm-edit').value='0';
+  document.getElementById('rm-manage').value='0';
+  renderRoleTabsChecks([]);
+  document.getElementById('role-modal').classList.add('open');
+}
+function openEditRoleModal(id){
+  var r=findCustomRole(id);if(!r)return;
+  editRoleId=id;
+  document.getElementById('role-modal-title').textContent='✏️ Редактировать роль';
+  document.getElementById('rm-label').value=r.label;
+  document.getElementById('rm-scope').value=r.scope||'own';
+  document.getElementById('rm-color').value=r.color||'#6d28d9';
+  document.getElementById('rm-edit').value=r.canEdit?'1':'0';
+  document.getElementById('rm-manage').value=r.manageUsers?'1':'0';
+  renderRoleTabsChecks(r.tabs||[]);
+  document.getElementById('role-modal').classList.add('open');
+}
+function saveRole(){
+  var label=document.getElementById('rm-label').value.trim();if(!label){alert('Введите название роли');return;}
+  var tabs=getSelectedRoleTabs();if(!tabs.length){alert('Выберите хотя бы один раздел');return;}
+  var data={label:label,scope:document.getElementById('rm-scope').value,color:document.getElementById('rm-color').value,canEdit:document.getElementById('rm-edit').value==='1',manageUsers:document.getElementById('rm-manage').value==='1',tabs:tabs};
+  if(editRoleId){
+    var r=findCustomRole(editRoleId);if(r)Object.assign(r,data);
+  }else{
+    data.id=slugifyRoleLabel(label);
+    customRoles.push(data);
+  }
+  closeModal('role-modal');renderAdminRoles();
+  syncToServer();
+}
+function deleteRole(id){
+  var cnt=usersCountForRole(id);
+  if(cnt&&!confirm('У '+cnt+' пользователь(ей) назначена эта роль. Удалить роль всё равно? (их роль не изменится автоматически, но доступ перестанет определяться этой ролью)'))return;
+  if(!cnt&&!confirm('Удалить роль?'))return;
+  customRoles=customRoles.filter(function(r){return r.id!==id;});
+  renderAdminRoles();
+  syncToServer();
 }
 function renderAccessChecks(defaults,selected){
   var wrap=document.getElementById('um-access-checks');
@@ -2074,7 +2231,7 @@ function saveUser(){
   var name=document.getElementById('um-name').value.trim();if(!name){alert('Введите имя');return;}
   var pass=document.getElementById('um-pass').value;
   var access=getSelectedAccess();
-  var data={name:name,role:document.getElementById('um-role').value,product:document.getElementById('um-product').value,email:document.getElementById('um-email').value,pos:document.getElementById('um-pos').value,access:access.length?access:ROLE_TABS[document.getElementById('um-role').value]||[]};
+  var data={name:name,role:document.getElementById('um-role').value,product:document.getElementById('um-product').value,email:document.getElementById('um-email').value,pos:document.getElementById('um-pos').value,access:access.length?access:roleTabsOf(document.getElementById('um-role').value)||[]};
   if(editUserId){var u=users.find(function(x){return x.id===editUserId;});if(u){Object.assign(u,data);if(pass.length>=4)u.password=pass;}}
   else{if(!pass||pass.length<4){alert('Укажите пароль (минимум 4 символа)');return;}users.push(Object.assign({id:Math.max.apply(null,[0].concat(users.map(function(u){return u.id;})))+1,password:pass,added:new Date().toISOString().slice(0,10)},data));}
   closeModal('user-modal');renderAdminUsers();buildTabs();
@@ -2101,7 +2258,7 @@ function renderAdminReports(){
 // EXPORT
 function exportExcel(){if(typeof XLSX==='undefined'){alert('Нет CDN');return;}var wb=XLSX.utils.book_new();var pd=[['Продукт','Этап','Статус','Ответственный','Прогресс%','Бюджет план','Бюджет факт','Дедлайн','North Star']];activeProjects().forEach(function(p){pd.push([p.name,p.stage,(SMAP[p.status]||{}).l||'',p.owner,p.progress,p.budgetPlan,p.budgetFact,p.deadline,p.northStar]);});XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(pd),'Продукты');var td2=[['Задача','Продукт','Ответственный','Статус','Дедлайн','Спринт']];biTasks.forEach(function(t){var p=projects.find(function(x){return x.id===t.projectId;});td2.push([t.title,p?p.name:'?',t.owner||'',t.status,t.deadline||'',t.sprint||'']);});XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(td2),'Задачи');XLSX.writeFile(wb,'PMO_'+new Date().toISOString().slice(0,10)+'.xlsx');}
 function exportPDF(){var h='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;font-size:12px;padding:20px}h1{font-size:16px}h2{font-size:13px;margin:12px 0 6px}table{width:100%;border-collapse:collapse}th{background:#222;color:#fff;padding:5px 8px;text-align:left;font-size:10px}td{padding:5px 8px;border-bottom:1px solid #eee;font-size:11px}</style></head><body><h1>PMO Control Center — '+new Date().toLocaleString('ru')+'</h1><h2>Продукты</h2><table><tr><th>Продукт</th><th>Этап</th><th>Статус</th><th>Ответственный</th><th>Прогресс</th><th>Дедлайн</th></tr>';activeProjects().forEach(function(p){h+='<tr><td>'+p.name+'</td><td>'+p.stage+'</td><td>'+((SMAP[p.status]||{}).l||'')+'</td><td>'+p.owner+'</td><td>'+p.progress+'%</td><td>'+(p.deadline||'—')+'</td></tr>';});h+='</table></body></html>';var w=window.open('','_blank');w.document.write(h);w.document.close();setTimeout(function(){w.print();},500);}
-function saveData(){var d=JSON.stringify({projects:projects,biTasks:biTasks,users:users,collabRequests:collabRequests},null,2);var a=document.createElement('a');a.href='data:application/json;charset=utf-8,'+encodeURIComponent(d);a.download='pmo_'+new Date().toISOString().slice(0,10)+'.json';a.click();}
+function saveData(){var d=JSON.stringify({projects:projects,biTasks:biTasks,users:users,collabRequests:collabRequests,customRoles:customRoles},null,2);var a=document.createElement('a');a.href='data:application/json;charset=utf-8,'+encodeURIComponent(d);a.download='pmo_'+new Date().toISOString().slice(0,10)+'.json';a.click();}
 function loadData(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(ev){try{var d=JSON.parse(ev.target.result);if(d.projects)projects=d.projects;if(d.biTasks)biTasks=d.biTasks;if(d.users)users=d.users;if(d.collabRequests)collabRequests=d.collabRequests;renderAll();syncToServer();alert('✅ Данные загружены!');}catch(err){alert('Ошибка файла');}};r.readAsText(f);e.target.value='';}
 
 
