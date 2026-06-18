@@ -41,6 +41,9 @@ async function ensureChatTable(){
   catch(e){console.log('  [DB] deleted col:',e.message);}
   try{await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS deletedAt VARCHAR(40) NULL DEFAULT NULL');}
   catch(e){console.log('  [DB] deletedAt col:',e.message);}
+  // Team field (explicit list of user ids who can see a product's tasks/metrics)
+  try{await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS team JSON NULL DEFAULT NULL');}
+  catch(e){console.log('  [DB] team col:',e.message);}
   // Custom roles (admin-defined, static-ish): stored as a single JSON blob keyed row
   try{await db.execute(`CREATE TABLE IF NOT EXISTS app_settings (
     settingKey VARCHAR(64) PRIMARY KEY,
@@ -120,7 +123,7 @@ app.get('/api/data',async(req,res)=>{
       let customRoles=[];
       try{const[csRows]=await db.execute('SELECT settingValue FROM app_settings WHERE settingKey=?',['customRoles']);if(csRows[0])customRoles=pj(csRows[0].settingValue,[]);}catch(e){}
       users.forEach(u=>{u.access=pj(u.access,[]);});
-      projects.forEach(p=>{p.kpis=pj(p.kpis,[]);p.issues=pj(p.issues,[]);p.monthlyPlan=pj(p.monthlyPlan,[]);p.metrics=pj(p.metrics,null);p.metricData=pj(p.metricData,{});p.desc=p.description||'';p.deleted=!!p.deleted;if(!p.deletedAt)delete p.deletedAt;});
+      projects.forEach(p=>{p.kpis=pj(p.kpis,[]);p.issues=pj(p.issues,[]);p.monthlyPlan=pj(p.monthlyPlan,[]);p.metrics=pj(p.metrics,null);p.metricData=pj(p.metricData,{});p.team=pj(p.team,[]);p.desc=p.description||'';p.deleted=!!p.deleted;if(!p.deletedAt)delete p.deletedAt;});
       tasks.forEach(t=>{t.kpis=pj(t.kpis,[]);t.issues=pj(t.issues,[]);t.subtasks=pj(t.subtasks,[]);t.desc=t.description||'';});
       return res.json({ok:true,users,projects,tasks,collabRequests:requests,customRoles});
     }
@@ -158,8 +161,8 @@ app.post('/api/data',async(req,res)=>{
       }
       for(const p of(projects||[])){
         await db.execute(
-          'INSERT INTO projects(id,name,stage,status,owner,ownerColor,northStar,budgetPlan,budgetFact,deadline,progress,yearlyGoal,kpis,issues,monthlyPlan,description,metrics,metricData,deleted,deletedAt)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),stage=VALUES(stage),status=VALUES(status),owner=VALUES(owner),northStar=VALUES(northStar),budgetPlan=VALUES(budgetPlan),budgetFact=VALUES(budgetFact),deadline=VALUES(deadline),progress=VALUES(progress),yearlyGoal=VALUES(yearlyGoal),kpis=VALUES(kpis),issues=VALUES(issues),monthlyPlan=VALUES(monthlyPlan),description=VALUES(description),metrics=VALUES(metrics),metricData=VALUES(metricData),deleted=VALUES(deleted),deletedAt=VALUES(deletedAt)',
-          [p.id,p.name,p.stage||'',p.status||'on_track',p.owner||'',p.ownerColor||'#4f6ef7',p.northStar||'',p.budgetPlan||0,p.budgetFact||0,p.deadline||null,p.progress||0,p.yearlyGoal||'',JSON.stringify(p.kpis||[]),JSON.stringify(p.issues||[]),JSON.stringify(p.monthlyPlan||[]),p.desc||'',p.metrics?JSON.stringify(p.metrics):null,JSON.stringify(p.metricData||{}),p.deleted?1:0,p.deletedAt||null]
+          'INSERT INTO projects(id,name,stage,status,owner,ownerColor,northStar,budgetPlan,budgetFact,deadline,progress,yearlyGoal,kpis,issues,monthlyPlan,description,metrics,metricData,team,deleted,deletedAt)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),stage=VALUES(stage),status=VALUES(status),owner=VALUES(owner),northStar=VALUES(northStar),budgetPlan=VALUES(budgetPlan),budgetFact=VALUES(budgetFact),deadline=VALUES(deadline),progress=VALUES(progress),yearlyGoal=VALUES(yearlyGoal),kpis=VALUES(kpis),issues=VALUES(issues),monthlyPlan=VALUES(monthlyPlan),description=VALUES(description),metrics=VALUES(metrics),metricData=VALUES(metricData),team=VALUES(team),deleted=VALUES(deleted),deletedAt=VALUES(deletedAt)',
+          [p.id,p.name,p.stage||'',p.status||'on_track',p.owner||'',p.ownerColor||'#4f6ef7',p.northStar||'',p.budgetPlan||0,p.budgetFact||0,p.deadline||null,p.progress||0,p.yearlyGoal||'',JSON.stringify(p.kpis||[]),JSON.stringify(p.issues||[]),JSON.stringify(p.monthlyPlan||[]),p.desc||'',p.metrics?JSON.stringify(p.metrics):null,JSON.stringify(p.metricData||{}),JSON.stringify(p.team||[]),p.deleted?1:0,p.deletedAt||null]
         );
       }
       for(const t of(tasks||[])){

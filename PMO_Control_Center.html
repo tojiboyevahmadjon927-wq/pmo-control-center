@@ -573,6 +573,9 @@ tbody td{padding:9px 10px;vertical-align:middle}
       <div class="fi"><label>Этап</label><select id="pm-stage"><option>Инициация</option><option>Планирование</option><option>Разработка</option><option>Тестирование</option><option>Запуск</option><option>Завершён</option></select></div>
       <div class="fi"><label>Статус</label><select id="pm-status"><option value="on_track">✅ В норме</option><option value="at_risk">⚠️ Под риском</option><option value="critical">🔴 Критично</option><option value="paused">⏸ На паузе</option><option value="done">🏁 Завершён</option></select></div>
       <div class="fi"><label>Ответственный</label><input id="pm-owner"></div>
+      <div class="fi full"><label>Команда продукта (видят все задачи и метрики этого продукта)</label>
+        <div id="pm-team-checks" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;background:var(--card2);padding:10px;border-radius:7px;border:1px solid var(--border)"></div>
+      </div>
       <div class="fi"><label>North Star метрика</label><input id="pm-ns"></div>
       <div class="fi"><label>Бюджет план ($)</label><input id="pm-bp" type="number"></div>
       <div class="fi"><label>Бюджет факт ($)</label><input id="pm-bf" type="number"></div>
@@ -885,17 +888,54 @@ document.addEventListener('keydown',function(e){
 // ============================================================
 var DATA_LOADED=false;
 var _syncTimer=null;
+var _syncPending=false;
 function syncToServer(){
   clearTimeout(_syncTimer);
+  _syncPending=true;
   _syncTimer=setTimeout(function(){
     fetch('/api/data',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({users:users,projects:projects,tasks:biTasks,collabRequests:collabRequests,customRoles:customRoles})
-    }).catch(function(e){console.warn('Sync to server failed:',e);});
+    }).catch(function(e){console.warn('Sync to server failed:',e);}).then(function(){_syncPending=false;});
   },400);
 }
 function syncNow(){syncToServer();}
+
+// ============================================================
+// LIVE POLLING — pulls other users' changes (new tasks, users, products...)
+// into this open tab automatically, so edits show up everywhere without
+// a manual page reload. Skips while: a local edit is mid-save (_syncPending)
+// or any modal is open (so it never yanks an input out from under someone typing).
+// ============================================================
+var _pollTimer=null;
+var POLL_MS=6000;
+function startLivePolling(){
+  stopLivePolling();
+  _pollTimer=setInterval(pollServer,POLL_MS);
+}
+function stopLivePolling(){
+  if(_pollTimer){clearInterval(_pollTimer);_pollTimer=null;}
+}
+function pollServer(){
+  if(!currentUser||_syncPending)return;
+  if(document.querySelector('.modal.open'))return; // don't disrupt someone mid-edit
+  fetch('/api/data').then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.ok)return;
+    if(Array.isArray(d.users))users=d.users;
+    if(Array.isArray(d.projects))projects=d.projects;
+    if(Array.isArray(d.tasks))biTasks=d.tasks;
+    if(Array.isArray(d.collabRequests))collabRequests=d.collabRequests;
+    if(Array.isArray(d.customRoles))customRoles=d.customRoles;
+    // Refresh currentUser from the freshly-fetched users list (role/access/product may have
+    // changed from another session) instead of holding on to a stale local copy.
+    var refreshed=users.find(function(u){return u.id===currentUser.id;});
+    if(!refreshed){alert('Ваша учётная запись была удалена администратором.');doLogout();return;}
+    currentUser=refreshed;
+    buildTabs();
+    renderAll();
+  }).catch(function(e){console.warn('Live poll failed:',e);});
+}
 // One-time self-healing migration: if the server's stored copy of a project
 // predates the metrics feature (no metrics/metricData), backfill it from the
 // original hardcoded seed so older server data doesn't wipe out metrics that
@@ -1026,8 +1066,10 @@ function doLogin(){
   buildTabs();
   setTab((u.access&&u.access[0])||'overview');
   renderAll();
+  startLivePolling();
 }
 function doLogout(){
+  stopLivePolling();
   currentUser=null;
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('topbar').style.display='none';
@@ -1110,6 +1152,9 @@ function activeSubtasks(t){return (t.subtasks||[]);}
 function hasProductAccess(p){
   if(!currentUser||!p)return false;
   if(roleScope()==='all')return true;
+  // Primary: explicit team membership (Команда продукта) — anyone on the team sees all tasks/metrics for it.
+  if(Array.isArray(p.team)&&p.team.indexOf(currentUser.id)>=0)return true;
+  // Legacy fallback for products created before the team field existed: owner name match or product-list text match.
   if(p.owner&&currentUser.name&&p.owner.trim().toLowerCase()===currentUser.name.trim().toLowerCase())return true;
   if(currentUser.product&&p.name&&currentUser.product.split(',').map(function(s){return s.trim().toLowerCase();}).indexOf(p.name.trim().toLowerCase())>=0)return true;
   return false;
@@ -1871,10 +1916,25 @@ function renderMetrics(){
 }
 
 // PROJECT CRUD
+// ---- TEAM CHECKS (project modal): explicit list of users who can see this product's tasks/metrics ----
+function renderTeamChecks(selectedIds){
+  var wrap=document.getElementById('pm-team-checks');if(!wrap)return;
+  selectedIds=selectedIds||[];
+  if(!users.length){wrap.innerHTML='<span style="font-size:11px;color:var(--muted)">Нет пользователей</span>';return;}
+  wrap.innerHTML=users.map(function(u){
+    var checked=selectedIds.indexOf(u.id)>=0;
+    return '<label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer"><input type="checkbox" value="'+u.id+'"'+(checked?' checked':'')+' style="accent-color:#4f6ef7">'+u.name+'</label>';
+  }).join('');
+}
+function getSelectedTeam(){
+  var wrap=document.getElementById('pm-team-checks');if(!wrap)return[];
+  return Array.from(wrap.querySelectorAll('input:checked')).map(function(cb){return +cb.value;});
+}
 function openAddModal(){
   editProjId=null;
   document.getElementById('proj-modal-title').textContent='➕ Новый продукт';
   ['pm-name','pm-owner','pm-ns','pm-kpi','pm-issues','pm-desc','pm-yearly','pm-ns-name','pm-ns-unit','pm-ns-target'].forEach(function(id){document.getElementById(id).value='';});
+  renderTeamChecks(currentUser?[currentUser.id]:[]);
   ['pm-bp','pm-bf','pm-prog'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('pm-dl').value='';
   document.getElementById('pm-ns-formula').value='percent_of_plan';
@@ -1893,6 +1953,7 @@ function openEditModal(id){
   var p=projects.find(function(x){return x.id===id;});if(!p)return;editProjId=id;
   document.getElementById('proj-modal-title').textContent='✏️ Редактировать';
   document.getElementById('pm-name').value=p.name;document.getElementById('pm-stage').value=p.stage;document.getElementById('pm-status').value=p.status;document.getElementById('pm-owner').value=p.owner;document.getElementById('pm-ns').value=p.northStar;document.getElementById('pm-bp').value=p.budgetPlan;document.getElementById('pm-bf').value=p.budgetFact;document.getElementById('pm-dl').value=p.deadline;document.getElementById('pm-prog').value=p.progress;document.getElementById('pm-yearly').value=p.yearlyGoal||'';document.getElementById('pm-kpi').value=(p.kpis||[]).map(function(k){return k.name+': план '+k.plan+', факт '+k.fact;}).join('\n');document.getElementById('pm-issues').value=(p.issues||[]).map(function(i){return i.title;}).join('\n');document.getElementById('pm-desc').value=p.desc||'';
+  renderTeamChecks(p.team||(currentUser?[currentUser.id]:[]));
   // Metrics — populate from locked/fixed metric system, default locked unless owner/admin unlocks
   var supList=document.getElementById('pm-supp-list');supList.innerHTML='';
   if(p.metrics&&p.metrics.northStar){
@@ -1938,7 +1999,14 @@ function saveProject(){
     };
   }
 
-  var data={name:name,stage:document.getElementById('pm-stage').value,status:document.getElementById('pm-status').value,owner:document.getElementById('pm-owner').value||'—',northStar:document.getElementById('pm-ns').value||'—',budgetPlan:+document.getElementById('pm-bp').value||0,budgetFact:+document.getElementById('pm-bf').value||0,deadline:document.getElementById('pm-dl').value||'—',progress:Math.min(100,Math.max(0,+document.getElementById('pm-prog').value||0)),yearlyGoal:document.getElementById('pm-yearly').value,kpis:kpis,issues:issues,desc:document.getElementById('pm-desc').value,metrics:metricsBlock};
+  // Team: explicit list of users who can see this product's tasks/metrics. Creator is always auto-included so they
+  // always see back what they (or anyone on the team) creates under this product.
+  var team=getSelectedTeam();
+  if(currentUser&&team.indexOf(currentUser.id)===-1)team.push(currentUser.id);
+  var ownerName=document.getElementById('pm-owner').value||'—';
+  var ownerUser=users.find(function(u){return u.name&&u.name.trim().toLowerCase()===ownerName.trim().toLowerCase();});
+  if(ownerUser&&team.indexOf(ownerUser.id)===-1)team.push(ownerUser.id);
+  var data={name:name,stage:document.getElementById('pm-stage').value,status:document.getElementById('pm-status').value,owner:ownerName,northStar:document.getElementById('pm-ns').value||'—',budgetPlan:+document.getElementById('pm-bp').value||0,budgetFact:+document.getElementById('pm-bf').value||0,deadline:document.getElementById('pm-dl').value||'—',progress:Math.min(100,Math.max(0,+document.getElementById('pm-prog').value||0)),yearlyGoal:document.getElementById('pm-yearly').value,kpis:kpis,issues:issues,desc:document.getElementById('pm-desc').value,metrics:metricsBlock,team:team};
   if(editProjId){var idx=projects.findIndex(function(x){return x.id===editProjId;});if(idx>=0)projects[idx]=Object.assign({},projects[idx],data);}
   else{var nid=Math.max.apply(null,[0].concat(projects.map(function(p){return p.id;})))+1;projects.push(Object.assign({id:nid,ownerColor:ACOLS[nid%ACOLS.length],monthlyPlan:MONTHS.map(function(m){return{month:m,goal:null,actual:null,notes:''};}),metricData:{}},data));}
   draftClear('pmo_draft_proj');
