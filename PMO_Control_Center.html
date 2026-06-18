@@ -1021,9 +1021,13 @@ function renderNotifs(){
 }
 
 // SUMMARY
-// ---- HELPERS: ACTIVE (non-deleted) TASKS / SUBTASKS ----
-function activeTasks(){return biTasks.filter(function(t){return !t.deleted;});}
-function activeSubtasks(t){return (t.subtasks||[]).filter(function(s){return !s.deleted;});}
+// ---- HELPERS: ACTIVE TASKS / SUBTASKS (tasks have no own trash; hide only if parent product is trashed) ----
+function activeTasks(){
+  var activeIds={};
+  activeProjects().forEach(function(p){activeIds[p.id]=true;});
+  return biTasks.filter(function(t){return !t.projectId||activeIds[t.projectId];});
+}
+function activeSubtasks(t){return (t.subtasks||[]);}
 function activeProjects(){return projects.filter(function(p){return !p.deleted;});}
 
 // ---- TOGGLE SUBTASK DONE ----
@@ -1035,80 +1039,26 @@ function toggleSubtask(taskId,subId){
   if(typeof syncNow==='function')syncNow();else if(typeof syncToServer==='function')syncToServer();
 }
 
-// ---- RESTORE / PERM-DELETE (admin only) ----
-function restoreTask(id){
-  var t=biTasks.find(function(x){return x.id===id;});
-  if(t){delete t.deleted;delete t.deletedAt;}
-  renderAdminTrash();renderTasks();renderSummary();
-  if(typeof syncNow==='function')syncNow();
-}
-function permDeleteTask(id){
-  if(!confirm('Удалить задачу НАВСЕГДА? Это необратимо!'))return;
-  biTasks=biTasks.filter(function(t){return t.id!==id;});
-  renderAdminTrash();renderTasks();renderSummary();
-  if(typeof syncNow==='function')syncNow();
-}
-function restoreSubtask(taskId,subId){
-  var t=biTasks.find(function(x){return x.id===taskId;});if(!t)return;
-  var s=(t.subtasks||[]).find(function(x){return x.id===subId;});
-  if(s){delete s.deleted;delete s.deletedAt;}
-  renderAdminTrash();
-  if(typeof syncNow==='function')syncNow();
-}
-function permDeleteSubtask(taskId,subId){
-  if(!confirm('Удалить подзадачу НАВСЕГДА?'))return;
-  var t=biTasks.find(function(x){return x.id===taskId;});if(!t)return;
-  t.subtasks=(t.subtasks||[]).filter(function(s){return s.id!==subId;});
-  renderAdminTrash();
-  if(typeof syncNow==='function')syncNow();
-}
+// ---- RESTORE / PERM-DELETE (admin only, projects only) ----
 function renderAdminTrash(){
   var cont=document.getElementById('atab-trash');if(!cont)return;
   var isAdmin=currentUser&&(currentUser.role==='ceo'||currentUser.role==='manager');
   var deletedProjs=deletedProjects();
-  var deletedTasks=biTasks.filter(function(t){return t.deleted;});
-  var deletedSubs=[];
-  biTasks.forEach(function(t){(t.subtasks||[]).filter(function(s){return s.deleted;}).forEach(function(s){deletedSubs.push({task:t,sub:s});});});
   var html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px"><span style="font-size:13px;font-weight:700">🗑 Корзина</span>';
-  if(isAdmin&&(deletedProjs.length||deletedTasks.length||deletedSubs.length)){
-    html+='<button class="btn btn-red btn-sm" onclick="if(confirm(\'Очистить корзину? Удалит всё навсегда!\')){var delIds=projects.filter(function(p){return p.deleted;}).map(function(p){return p.id;});projects=projects.filter(function(p){return !p.deleted;});biTasks=biTasks.filter(function(t){t.subtasks=(t.subtasks||[]).filter(function(s){return !s.deleted;});return !t.deleted&&delIds.indexOf(t.projectId)===-1;});renderAdminTrash();renderAll();if(typeof syncNow===\'function\')syncNow();}">🗑 Очистить корзину</button>';
+  if(isAdmin&&deletedProjs.length){
+    html+='<button class="btn btn-red btn-sm" onclick="if(confirm(\'Очистить корзину? Удалит все продукты навсегда!\')){var delIds=projects.filter(function(p){return p.deleted;}).map(function(p){return p.id;});projects=projects.filter(function(p){return !p.deleted;});biTasks=biTasks.filter(function(t){return delIds.indexOf(t.projectId)===-1;});renderAdminTrash();renderAll();if(typeof syncNow===\'function\')syncNow();}">🗑 Очистить корзину</button>';
   }
   html+='</div>';
-  if(!deletedProjs.length&&!deletedTasks.length&&!deletedSubs.length){html+='<div class="empty">Корзина пуста ✓</div>';cont.innerHTML=html;return;}
-  if(deletedProjs.length){
-    html+='<div style="font-size:11px;font-weight:700;margin-bottom:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Продукты ('+deletedProjs.length+')</div>';
-    deletedProjs.forEach(function(p){
-      html+='<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--card2);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">';
-      html+='<div style="flex:1"><div style="font-size:12px;font-weight:700;text-decoration:line-through;color:var(--muted)">📁 '+p.name+'</div>';
-      html+='<div style="font-size:10px;color:var(--muted);margin-top:2px">'+(p.deletedAt?'удалено '+new Date(p.deletedAt).toLocaleDateString('ru'):'')+'</div></div>';
-      html+='<button class="btn btn-green btn-sm" onclick="restoreProject('+p.id+')">↩ Восстановить</button>';
-      if(isAdmin)html+='<button class="btn btn-red btn-sm" onclick="permDeleteProject('+p.id+')">✕ Навсегда</button>';
-      html+='</div>';
-    });
-  }
-  if(deletedTasks.length){
-    html+='<div style="font-size:11px;font-weight:700;margin-bottom:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Задачи ('+deletedTasks.length+')</div>';
-    deletedTasks.forEach(function(t){
-      var p=projects.find(function(x){return x.id===t.projectId;});
-      html+='<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--card2);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">';
-      html+='<div style="flex:1"><div style="font-size:12px;font-weight:700;text-decoration:line-through;color:var(--muted)">'+t.title+'</div>';
-      html+='<div style="font-size:10px;color:var(--muted);margin-top:2px">'+(p?'📁 '+p.name+'  ':'')+( t.deletedAt?'удалено '+new Date(t.deletedAt).toLocaleDateString('ru'):'')+'</div></div>';
-      html+='<button class="btn btn-green btn-sm" onclick="restoreTask('+t.id+')">↩ Восстановить</button>';
-      if(isAdmin)html+='<button class="btn btn-red btn-sm" onclick="permDeleteTask('+t.id+')">✕ Навсегда</button>';
-      html+='</div>';
-    });
-  }
-  if(deletedSubs.length){
-    html+='<div style="font-size:11px;font-weight:700;margin:14px 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Подзадачи ('+deletedSubs.length+')</div>';
-    deletedSubs.forEach(function(ds){
-      html+='<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--card2);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">';
-      html+='<div style="flex:1"><div style="font-size:12px;font-weight:700;text-decoration:line-through;color:var(--muted)">'+ds.sub.title+'</div>';
-      html+='<div style="font-size:10px;color:var(--muted);margin-top:2px">из задачи: '+ds.task.title+'</div></div>';
-      html+='<button class="btn btn-green btn-sm" onclick="restoreSubtask('+ds.task.id+','+ds.sub.id+')">↩ Восстановить</button>';
-      if(isAdmin)html+='<button class="btn btn-red btn-sm" onclick="permDeleteSubtask('+ds.task.id+','+ds.sub.id+')">✕ Навсегда</button>';
-      html+='</div>';
-    });
-  }
+  if(!deletedProjs.length){html+='<div class="empty">Корзина пуста ✓</div>';cont.innerHTML=html;return;}
+  html+='<div style="font-size:11px;font-weight:700;margin-bottom:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Продукты ('+deletedProjs.length+')</div>';
+  deletedProjs.forEach(function(p){
+    html+='<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--card2);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">';
+    html+='<div style="flex:1"><div style="font-size:12px;font-weight:700;text-decoration:line-through;color:var(--muted)">📁 '+p.name+'</div>';
+    html+='<div style="font-size:10px;color:var(--muted);margin-top:2px">'+(p.deletedAt?'удалено '+new Date(p.deletedAt).toLocaleDateString('ru'):'')+'</div></div>';
+    html+='<button class="btn btn-green btn-sm" onclick="restoreProject('+p.id+')">↩ Восстановить</button>';
+    if(isAdmin)html+='<button class="btn btn-red btn-sm" onclick="permDeleteProject('+p.id+')">✕ Навсегда</button>';
+    html+='</div>';
+  });
   cont.innerHTML=html;
 }
 
@@ -1912,7 +1862,6 @@ function deleteProject(id){
   if(!confirm('Удалить продукт? Он перейдёт в корзину вместе с его задачами.'))return;
   var p=projects.find(function(x){return x.id===id;});
   if(p){p.deleted=true;p.deletedAt=new Date().toISOString();}
-  biTasks.forEach(function(t){if(t.projectId===id){t.deleted=true;t.deletedAt=new Date().toISOString();}});
   closePanel();renderAll();renderAdminTrash();
   syncToServer();
 }
@@ -1964,9 +1913,8 @@ function saveTask(){
   syncToServer();
 }
 function deleteTask(id){
-  if(!confirm('Переместить задачу в корзину?'))return;
-  var t=biTasks.find(function(x){return x.id===id;});
-  if(t){t.deleted=true;t.deletedAt=new Date().toISOString();}
+  if(!confirm('Удалить задачу навсегда?'))return;
+  biTasks=biTasks.filter(function(x){return x.id!==id;});
   closePanel();renderTasks();renderSummary();
   if(typeof syncNow==='function')syncNow();else if(typeof syncToServer==='function')syncToServer();
 }
@@ -2019,10 +1967,9 @@ function saveSubtask(){
   if(typeof syncNow==='function')syncNow();else if(typeof syncToServer==='function')syncToServer();
 }
 function deleteSubtask(taskId,subId){
-  if(!confirm('Переместить подзадачу в корзину?'))return;
+  if(!confirm('Удалить подзадачу навсегда?'))return;
   var t=biTasks.find(function(x){return x.id===taskId;});if(!t)return;
-  var s=(t.subtasks||[]).find(function(x){return x.id===subId;});
-  if(s){s.deleted=true;s.deletedAt=new Date().toISOString();}
+  t.subtasks=(t.subtasks||[]).filter(function(x){return x.id!==subId;});
   openTaskDetail(taskId);
   if(typeof syncNow==='function')syncNow();else if(typeof syncToServer==='function')syncToServer();
 }
