@@ -456,6 +456,16 @@ tbody td{padding:9px 10px;vertical-align:middle}
   <div id="plan-content"><div class="empty">Выберите продукт</div></div>
 </div>
 
+<!-- BIWEEKLY -->
+<div id="tab-biweekly" style="display:none">
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+    <span class="sec-t">🔁 Двухнедельные спринты — задачи и метрики</span>
+    <select class="fsel" id="biw-sel" onchange="renderBiweekly()"><option value="">Выберите продукт...</option></select>
+    <select class="fsel" id="biw-cycle-sel" onchange="renderBiweekly()"></select>
+  </div>
+  <div id="biw-content"><div class="empty">Выберите продукт</div></div>
+</div>
+
 <!-- TASKS -->
 <div id="tab-tasks" style="display:none">
   <div class="fbar" style="margin-bottom:10px">
@@ -773,8 +783,8 @@ const STAGES=['Инициация','Планирование','Разработ�
 const SMAP={on_track:{l:'В норме',c:'b-green'},at_risk:{l:'Под риском',c:'b-yellow'},critical:{l:'Критично',c:'b-red'},paused:{l:'На паузе',c:'b-gray'},done:{l:'Завершён',c:'b-blue'}};
 const SCOL={'Инициация':'#4f6ef7','Планирование':'#7c3aed','Разработка':'#f59e0b','Тестирование':'#06b6d4','Запуск':'#22c55e','Завершён':'#6b7280'};
 const ACOLS=['#4f6ef7','#7c3aed','#ef4444','#22c55e','#f59e0b','#06b6d4','#ec4899'];
-const ALL_TABS=['overview','projects','metrics','kanban','gantt','calendar','plans','tasks','collab','admin'];
-const TAB_LABELS={'overview':'📊 Обзор','projects':'📋 Проекты','metrics':'📐 Метрики','kanban':'🗂 Kanban','gantt':'📊 Ганtt','calendar':'📅 Календарь','plans':'📈 Планы','tasks':'✅ Задачи','collab':'🤝 Запросы','admin':'⚙️ Админ'};
+const ALL_TABS=['overview','projects','metrics','kanban','gantt','calendar','plans','biweekly','tasks','collab','admin'];
+const TAB_LABELS={'overview':'📊 Обзор','projects':'📋 Проекты','metrics':'📐 Метрики','kanban':'🗂 Kanban','gantt':'📊 Ганtt','calendar':'📅 Календарь','plans':'📈 Планы','biweekly':'🔁 Спринты','tasks':'✅ Задачи','collab':'🤝 Запросы','admin':'⚙️ Админ'};
 // ---- STATIC ROLE ACCESS MATRIX ----
 // scope: 'all' = sees every product; 'own' = sees only products they own/are assigned to/have tasks in
 // canEdit: can edit product/task structure (not just own tasks' status/comments)
@@ -782,9 +792,9 @@ const TAB_LABELS={'overview':'📊 Обзор','projects':'📋 Проекты',
 const ROLE_TABS={
   admin:ALL_TABS,
   ceo:ALL_TABS,
-  head:['overview','projects','metrics','kanban','gantt','calendar','plans','tasks','collab'],
-  manager:['overview','projects','metrics','kanban','gantt','calendar','plans','tasks','collab'],
-  senior:['overview','metrics','kanban','gantt','calendar','tasks','collab'],
+  head:['overview','projects','metrics','kanban','gantt','calendar','plans','biweekly','tasks','collab'],
+  manager:['overview','projects','metrics','kanban','gantt','calendar','plans','biweekly','tasks','collab'],
+  senior:['overview','metrics','kanban','gantt','calendar','biweekly','tasks','collab'],
   member:['metrics','tasks','calendar','collab']
 };
 const ROLE_SCOPE={admin:'all',ceo:'all',head:'own',manager:'own',senior:'own',member:'own'};
@@ -1367,6 +1377,107 @@ function renderPlans(){
 }
 function updPlan(pid,idx,field,val){var p=projects.find(function(x){return x.id===pid;});if(!p||!p.monthlyPlan)return;p.monthlyPlan[idx][field]=field==='notes'?val:(val===''?null:+val);}
 function savePlan(){var pid=+(document.getElementById('plan-sel')||{}).value;var p=projects.find(function(x){return x.id===pid;});if(p){var gi=document.getElementById('yearly-inp');if(gi)p.yearlyGoal=gi.value;}renderPlans();alert('✅ План сохранён!');}
+
+// BIWEEKLY — 14-day sprint cycles covering the calendar year, with tasks-in-period + a metrics check-in log per product
+function pad2(n){return n<10?'0'+n:''+n;}
+function biwFmt(d){return pad2(d.getDate())+'.'+pad2(d.getMonth()+1);}
+function biwISO(d){return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());}
+function getBiweeklyCycles(year){
+  var cycles=[],start=new Date(year,0,1),idx=1;
+  while(start.getFullYear()===year){
+    var end=new Date(start);end.setDate(end.getDate()+13);
+    if(end.getFullYear()>year)end=new Date(year,11,31);
+    cycles.push({id:year+'-BW'+pad2(idx),label:'Спринт '+idx+' ('+biwFmt(start)+'–'+biwFmt(end)+')',start:biwISO(start),end:biwISO(end)});
+    start=new Date(end);start.setDate(start.getDate()+1);idx++;
+  }
+  return cycles;
+}
+function currentBiweeklyCycle(){
+  var y=new Date().getFullYear(),cs=getBiweeklyCycles(y),today=biwISO(new Date());
+  return cs.find(function(c){return today>=c.start&&today<=c.end;})||cs[cs.length-1];
+}
+function populateBiweeklySel(){
+  var sel=document.getElementById('biw-sel');if(!sel)return;
+  var cur=sel.value;
+  sel.innerHTML='<option value="">Выберите продукт...</option>'+activeProjects().map(function(p){return '<option value="'+p.id+'">'+p.name+'</option>';}).join('');
+  if(cur)sel.value=cur;
+  var csel=document.getElementById('biw-cycle-sel');if(!csel)return;
+  var curC=csel.value;
+  var cycles=getBiweeklyCycles(new Date().getFullYear());
+  csel.innerHTML=cycles.map(function(c){return '<option value="'+c.id+'">'+c.label+'</option>';}).join('');
+  csel.value=curC||currentBiweeklyCycle().id;
+}
+function renderBiweekly(){
+  var pid=+(document.getElementById('biw-sel')||{}).value;
+  var cont=document.getElementById('biw-content');if(!cont)return;
+  if(!pid){cont.innerHTML='<div class="empty">Выберите продукт</div>';return;}
+  var p=projects.find(function(x){return x.id===pid;});if(!p)return;
+  var cycles=getBiweeklyCycles(new Date().getFullYear());
+  var cid=(document.getElementById('biw-cycle-sel')||{}).value||currentBiweeklyCycle().id;
+  var cycle=cycles.find(function(c){return c.id===cid;})||currentBiweeklyCycle();
+  var inCycle=activeTasks().filter(function(t){return t.projectId===pid&&t.deadline&&t.deadline>=cycle.start&&t.deadline<=cycle.end;});
+  var done=inCycle.filter(function(t){return t.status==='done';}).length;
+  var pct=inCycle.length?Math.round(done/inCycle.length*100):null;
+  var pctColor=pct==null?'#8892a4':pct>=70?'#22c55e':pct>=40?'#f59e0b':'#ef4444';
+  var taskRows=inCycle.length?inCycle.map(function(t){
+    var sc={todo:'b-gray',inprogress:'b-blue',done:'b-green'}[t.status]||'b-gray';
+    var sl={todo:'К выполнению',inprogress:'В работе',done:'Готово'}[t.status]||t.status;
+    return '<tr style="cursor:pointer" onclick="openTaskDetail('+t.id+')"><td>'+t.title+'</td><td>'+(t.owner||'—')+'</td><td>'+(t.deadline||'—')+'</td><td><span class="badge '+sc+'">'+sl+'</span></td></tr>';
+  }).join(''):'<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:14px">Нет задач со сроком в этом периоде</td></tr>';
+  var kpiRows=(p.kpis||[]).map(function(k,i){
+    return '<div class="mrow"><span style="font-size:12px">'+k.name+'</span><div class="mvs"><div class="mv"><div class="k">ПЛАН</div><div class="v">'+k.plan+'</div></div><div class="mv"><div class="k">ФАКТ</div><input type="text" value="'+(k.fact!=null&&k.fact!=='—'?k.fact:'')+'" data-idx="'+i+'" class="biw-kpi-fact" style="width:80px;background:var(--card2);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:3px 6px;font-size:11px;outline:none"></div></div></div>';
+  }).join('');
+  var histRows=(p.biweeklyLog||[]).slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'');}).slice(0,8).map(function(l){
+    return '<tr><td>'+l.label+'</td><td>'+l.date+'</td><td>'+(l.tasksDone!=null?l.tasksDone+'/'+l.tasksTotal:'—')+'</td><td>'+(l.notes||'')+'</td></tr>';
+  }).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:10px">Нет истории чек-инов</td></tr>';
+  cont.innerHTML=
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:13px;margin-bottom:13px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'+
+        '<div><div style="font-size:10px;color:var(--muted)">ПЕРИОД</div><div style="font-size:14px;font-weight:700">'+cycle.label+'</div></div>'+
+        (inCycle.length?'<div class="pw" style="min-width:160px"><div class="pb"><div class="pf" style="width:'+pct+'%;background:'+pctColor+'"></div></div><span style="font-size:11px;font-weight:700;color:'+pctColor+'">'+done+'/'+inCycle.length+' ('+pct+'%)</span></div>':'<span style="font-size:11px;color:var(--muted)">Нет задач</span>')+
+        (canEditData()?'<button class="btn btn-primary btn-sm" onclick="addBiweeklyTask('+pid+',\''+cycle.id+'\')">+ Задача в период</button>':'')+
+      '</div>'+
+    '</div>'+
+    '<div class="sec-h"><span class="sec-t">✅ Задачи периода</span></div>'+
+    '<div class="tbl-wrap" style="margin-bottom:16px"><table><thead><tr><th>Задача</th><th>Ответственный</th><th>Срок</th><th>Статус</th></tr></thead><tbody>'+taskRows+'</tbody></table></div>'+
+    '<div class="sec-h"><span class="sec-t">📐 Метрики за период</span></div>'+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:13px;margin-bottom:13px">'+
+      (kpiRows||'<div class="empty">KPI не настроены для продукта</div>')+
+      '<div class="fg" style="margin-top:8px"><div class="fi" style="flex:1"><label>Заметка по чек-ину</label><input type="text" id="biw-note" placeholder="Что сделано, что мешает..."></div></div>'+
+      (canEditData()?'<button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="saveBiweeklyCheckin('+pid+',\''+cycle.id+'\',\''+cycle.label.replace(/'/g,"\\'")+'\')">💾 Сохранить чек-ин</button>':'')+
+    '</div>'+
+    '<div class="sec-h"><span class="sec-t">🕘 История чек-инов</span></div>'+
+    '<div class="tbl-wrap"><table><thead><tr><th>Период</th><th>Дата</th><th>Задачи</th><th>Заметка</th></tr></thead><tbody>'+histRows+'</tbody></table></div>';
+}
+function addBiweeklyTask(pid,cycleId){
+  var cycles=getBiweeklyCycles(new Date().getFullYear());
+  var cycle=cycles.find(function(c){return c.id===cycleId;});
+  openAddTaskModal(pid);
+  setTimeout(function(){
+    var sp=document.getElementById('tm-sprint'),dl=document.getElementById('tm-dl');
+    if(sp&&cycle)sp.value=cycle.label;
+    if(dl&&cycle)dl.value=cycle.end;
+  },60);
+}
+function saveBiweeklyCheckin(pid,cycleId,cycleLabel){
+  var p=projects.find(function(x){return x.id===pid;});if(!p)return;
+  if(!canEditData()){alert('Недостаточно прав для сохранения чек-ина.');return;}
+  document.querySelectorAll('#biw-content .biw-kpi-fact').forEach(function(inp){
+    var idx=+inp.dataset.idx;
+    if(p.kpis&&p.kpis[idx])p.kpis[idx].fact=inp.value;
+  });
+  var cycles=getBiweeklyCycles(new Date().getFullYear());
+  var cycle=cycles.find(function(c){return c.id===cycleId;});
+  var inCycle=activeTasks().filter(function(t){return t.projectId===pid&&t.deadline&&cycle&&t.deadline>=cycle.start&&t.deadline<=cycle.end;});
+  var done=inCycle.filter(function(t){return t.status==='done';}).length;
+  if(!p.biweeklyLog)p.biweeklyLog=[];
+  p.biweeklyLog.push({cycleId:cycleId,label:cycleLabel,date:biwISO(new Date()),tasksDone:done,tasksTotal:inCycle.length,notes:(document.getElementById('biw-note')||{}).value||'',kpis:(p.kpis||[]).map(function(k){return {name:k.name,plan:k.plan,fact:k.fact};})});
+  renderBiweekly();
+  if(typeof renderMetrics==='function')renderMetrics();
+  if(typeof renderTable==='function')renderTable();
+  syncToServer();
+  alert('✅ Чек-ин сохранён!');
+}
 
 // TASKS
 function getSprints(){return[...new Set(activeTasks().map(function(t){return t.sprint;}).filter(Boolean))].sort();}
@@ -2515,9 +2626,9 @@ function renderCalendar(){
 
 
 // TABS
-function setTab(tab){activeTab=tab;ALL_TABS.forEach(function(t){var el=document.getElementById('tab-'+t);if(el)el.style.display=t===tab?'block':'none';});document.querySelectorAll('.tab').forEach(function(el){el.classList.remove('active');if(el.getAttribute('onclick')==="setTab('"+tab+"')")el.classList.add('active');});if(tab==='overview'){renderCharts();renderWorkload();}if(tab==='metrics')renderMetrics();if(tab==='kanban')renderKanban();if(tab==='plans'){populatePlanSel();renderPlans();}if(tab==='tasks'){populateTaskFilters();renderTasks();}if(tab==='collab'){populateTaskFilters();renderCollab();}if(tab==='gantt'){populateGanttFilters();renderGantt();}if(tab==='calendar'){populateCalendarFilters();renderCalendar();}if(tab==='admin')setAdminTab(activeAdminTab);}
+function setTab(tab){activeTab=tab;ALL_TABS.forEach(function(t){var el=document.getElementById('tab-'+t);if(el)el.style.display=t===tab?'block':'none';});document.querySelectorAll('.tab').forEach(function(el){el.classList.remove('active');if(el.getAttribute('onclick')==="setTab('"+tab+"')")el.classList.add('active');});if(tab==='overview'){renderCharts();renderWorkload();}if(tab==='metrics')renderMetrics();if(tab==='kanban')renderKanban();if(tab==='plans'){populatePlanSel();renderPlans();}if(tab==='biweekly'){populateBiweeklySel();renderBiweekly();}if(tab==='tasks'){populateTaskFilters();renderTasks();}if(tab==='collab'){populateTaskFilters();renderCollab();}if(tab==='gantt'){populateGanttFilters();renderGantt();}if(tab==='calendar'){populateCalendarFilters();renderCalendar();}if(tab==='admin')setAdminTab(activeAdminTab);}
 
-function renderAll(){renderNotifs();renderSummary();renderNS();renderTable();updateOwnerFilter();populatePlanSel();populateTaskFilters();if(activeTab==='overview'){renderCharts();renderWorkload();}if(activeTab==='metrics')renderMetrics();if(activeTab==='kanban')renderKanban();if(activeTab==='plans')renderPlans();if(activeTab==='tasks')renderTasks();if(activeTab==='collab')renderCollab();if(activeTab==='gantt')renderGantt();if(activeTab==='calendar')renderCalendar();if(activeTab==='admin')setAdminTab(activeAdminTab);}
+function renderAll(){renderNotifs();renderSummary();renderNS();renderTable();updateOwnerFilter();populatePlanSel();populateBiweeklySel();populateTaskFilters();if(activeTab==='overview'){renderCharts();renderWorkload();}if(activeTab==='metrics')renderMetrics();if(activeTab==='kanban')renderKanban();if(activeTab==='plans')renderPlans();if(activeTab==='biweekly')renderBiweekly();if(activeTab==='tasks')renderTasks();if(activeTab==='collab')renderCollab();if(activeTab==='gantt')renderGantt();if(activeTab==='calendar')renderCalendar();if(activeTab==='admin')setAdminTab(activeAdminTab);}
 
 document.getElementById('today-date').textContent=new Date().toLocaleDateString('ru',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 initLogin();
