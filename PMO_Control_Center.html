@@ -897,6 +897,8 @@ function syncToServer(){
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({users:users,projects:projects,tasks:biTasks,collabRequests:collabRequests,customRoles:customRoles})
+    }).then(function(r){return r.json();}).then(function(d){
+      if(d&&d.warning){console.warn('Сохранение прошло с ошибкой на сервере:',d.warning);}
     }).catch(function(e){console.warn('Sync to server failed:',e);}).then(function(){_syncPending=false;});
   },400);
 }

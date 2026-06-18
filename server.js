@@ -16,6 +16,22 @@ async function connectDB(){
     db=null;
   }
 }
+async function columnExists(table,col){
+  try{
+    const[rows]=await db.execute(
+      'SELECT COUNT(*) as cnt FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?',
+      [table,col]
+    );
+    return rows[0].cnt>0;
+  }catch(e){console.log('  [DB] columnExists check failed for '+table+'.'+col+':',e.message);return true;} // assume exists to avoid repeated failing ALTERs
+}
+async function ensureColumn(table,col,def){
+  try{
+    if(await columnExists(table,col))return;
+    await db.execute(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+    console.log('  [DB] Added column '+table+'.'+col);
+  }catch(e){console.log('  [DB] '+table+'.'+col+' col:',e.message);}
+}
 async function ensureChatTable(){
   if(!db)return;
   try{
@@ -28,22 +44,16 @@ async function ensureChatTable(){
       INDEX idx_user (userId)
     )`);
   }catch(e){console.log('  [DB] chat_history:',e.message);}
-  // Add subtasks column if missing
-  try{await db.execute('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS subtasks JSON NULL DEFAULT NULL');}
-  catch(e){console.log('  [DB] subtasks col:',e.message);}
-  // Add metrics/metricData columns if missing (North Star metric system)
-  try{await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS metrics JSON NULL DEFAULT NULL');}
-  catch(e){console.log('  [DB] metrics col:',e.message);}
-  try{await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS metricData JSON NULL DEFAULT NULL');}
-  catch(e){console.log('  [DB] metricData col:',e.message);}
-  // Add deleted/deletedAt columns if missing (project trash/soft-delete)
-  try{await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS deleted TINYINT(1) NOT NULL DEFAULT 0');}
-  catch(e){console.log('  [DB] deleted col:',e.message);}
-  try{await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS deletedAt VARCHAR(40) NULL DEFAULT NULL');}
-  catch(e){console.log('  [DB] deletedAt col:',e.message);}
+  // Use information_schema checks instead of "ADD COLUMN IF NOT EXISTS" — that syntax silently
+  // fails on MySQL <8.0.29 / older MariaDB, which left columns missing and broke every save
+  // that referenced them (the whole row INSERT would throw "Unknown column").
+  await ensureColumn('tasks','subtasks','JSON NULL DEFAULT NULL');
+  await ensureColumn('projects','metrics','JSON NULL DEFAULT NULL');
+  await ensureColumn('projects','metricData','JSON NULL DEFAULT NULL');
+  await ensureColumn('projects','deleted','TINYINT(1) NOT NULL DEFAULT 0');
+  await ensureColumn('projects','deletedAt','VARCHAR(40) NULL DEFAULT NULL');
   // Team field (explicit list of user ids who can see a product's tasks/metrics)
-  try{await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS team JSON NULL DEFAULT NULL');}
-  catch(e){console.log('  [DB] team col:',e.message);}
+  await ensureColumn('projects','team','JSON NULL DEFAULT NULL');
   // Custom roles (admin-defined, static-ish): stored as a single JSON blob keyed row
   try{await db.execute(`CREATE TABLE IF NOT EXISTS app_settings (
     settingKey VARCHAR(64) PRIMARY KEY,
@@ -153,34 +163,46 @@ app.post('/api/data',async(req,res)=>{
         if(collabRequests.length){const ids=collabRequests.map(r=>r.id);await db.execute(`DELETE FROM collab_requests WHERE id NOT IN (${ids.map(()=>'?').join(',')})`,ids);}
         else await db.execute('DELETE FROM collab_requests');
       }
+      var warnings=[];
       for(const u of(users||[])){
-        await db.execute(
-          'INSERT INTO users(id,name,role,product,email,pos,password,access)VALUES(?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),role=VALUES(role),product=VALUES(product),email=VALUES(email),pos=VALUES(pos),password=VALUES(password),access=VALUES(access)',
-          [u.id,u.name,u.role||'member',u.product||'',u.email||'',u.pos||'',u.password||'',JSON.stringify(u.access||[])]
-        );
+        try{
+          await db.execute(
+            'INSERT INTO users(id,name,role,product,email,pos,password,access)VALUES(?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),role=VALUES(role),product=VALUES(product),email=VALUES(email),pos=VALUES(pos),password=VALUES(password),access=VALUES(access)',
+            [u.id,u.name,u.role||'member',u.product||'',u.email||'',u.pos||'',u.password||'',JSON.stringify(u.access||[])]
+          );
+        }catch(e){console.log('  [DB] user save failed id='+u.id+':',e.message);warnings.push('user '+u.id+': '+e.message);}
       }
       for(const p of(projects||[])){
-        await db.execute(
-          'INSERT INTO projects(id,name,stage,status,owner,ownerColor,northStar,budgetPlan,budgetFact,deadline,progress,yearlyGoal,kpis,issues,monthlyPlan,description,metrics,metricData,team,deleted,deletedAt)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),stage=VALUES(stage),status=VALUES(status),owner=VALUES(owner),northStar=VALUES(northStar),budgetPlan=VALUES(budgetPlan),budgetFact=VALUES(budgetFact),deadline=VALUES(deadline),progress=VALUES(progress),yearlyGoal=VALUES(yearlyGoal),kpis=VALUES(kpis),issues=VALUES(issues),monthlyPlan=VALUES(monthlyPlan),description=VALUES(description),metrics=VALUES(metrics),metricData=VALUES(metricData),team=VALUES(team),deleted=VALUES(deleted),deletedAt=VALUES(deletedAt)',
-          [p.id,p.name,p.stage||'',p.status||'on_track',p.owner||'',p.ownerColor||'#4f6ef7',p.northStar||'',p.budgetPlan||0,p.budgetFact||0,p.deadline||null,p.progress||0,p.yearlyGoal||'',JSON.stringify(p.kpis||[]),JSON.stringify(p.issues||[]),JSON.stringify(p.monthlyPlan||[]),p.desc||'',p.metrics?JSON.stringify(p.metrics):null,JSON.stringify(p.metricData||{}),JSON.stringify(p.team||[]),p.deleted?1:0,p.deletedAt||null]
-        );
+        try{
+          await db.execute(
+            'INSERT INTO projects(id,name,stage,status,owner,ownerColor,northStar,budgetPlan,budgetFact,deadline,progress,yearlyGoal,kpis,issues,monthlyPlan,description,metrics,metricData,team,deleted,deletedAt)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),stage=VALUES(stage),status=VALUES(status),owner=VALUES(owner),northStar=VALUES(northStar),budgetPlan=VALUES(budgetPlan),budgetFact=VALUES(budgetFact),deadline=VALUES(deadline),progress=VALUES(progress),yearlyGoal=VALUES(yearlyGoal),kpis=VALUES(kpis),issues=VALUES(issues),monthlyPlan=VALUES(monthlyPlan),description=VALUES(description),metrics=VALUES(metrics),metricData=VALUES(metricData),team=VALUES(team),deleted=VALUES(deleted),deletedAt=VALUES(deletedAt)',
+            [p.id,p.name,p.stage||'',p.status||'on_track',p.owner||'',p.ownerColor||'#4f6ef7',p.northStar||'',p.budgetPlan||0,p.budgetFact||0,p.deadline||null,p.progress||0,p.yearlyGoal||'',JSON.stringify(p.kpis||[]),JSON.stringify(p.issues||[]),JSON.stringify(p.monthlyPlan||[]),p.desc||'',p.metrics?JSON.stringify(p.metrics):null,JSON.stringify(p.metricData||{}),JSON.stringify(p.team||[]),p.deleted?1:0,p.deletedAt||null]
+          );
+        }catch(e){console.log('  [DB] project save failed id='+p.id+':',e.message);warnings.push('project '+p.id+': '+e.message);}
       }
       for(const t of(tasks||[])){
-        await db.execute(
-          'INSERT INTO tasks(id,projectId,title,owner,deadline,status,priority,sprint,goal,progress,kpis,issues,description,reqId,subtasks)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),owner=VALUES(owner),deadline=VALUES(deadline),status=VALUES(status),priority=VALUES(priority),sprint=VALUES(sprint),goal=VALUES(goal),progress=VALUES(progress),kpis=VALUES(kpis),issues=VALUES(issues),description=VALUES(description),subtasks=VALUES(subtasks)',
-          [t.id,t.projectId||null,t.title,t.owner||'',t.deadline||null,t.status||'todo',t.priority||'medium',t.sprint||'',t.goal||'',t.progress||null,JSON.stringify(t.kpis||[]),JSON.stringify(t.issues||[]),t.desc||'',t.reqId||null,JSON.stringify(t.subtasks||[])]
-        );
+        try{
+          await db.execute(
+            'INSERT INTO tasks(id,projectId,title,owner,deadline,status,priority,sprint,goal,progress,kpis,issues,description,reqId,subtasks)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),owner=VALUES(owner),deadline=VALUES(deadline),status=VALUES(status),priority=VALUES(priority),sprint=VALUES(sprint),goal=VALUES(goal),progress=VALUES(progress),kpis=VALUES(kpis),issues=VALUES(issues),description=VALUES(description),subtasks=VALUES(subtasks)',
+            [t.id,t.projectId||null,t.title,t.owner||'',t.deadline||null,t.status||'todo',t.priority||'medium',t.sprint||'',t.goal||'',t.progress||null,JSON.stringify(t.kpis||[]),JSON.stringify(t.issues||[]),t.desc||'',t.reqId||null,JSON.stringify(t.subtasks||[])]
+          );
+        }catch(e){console.log('  [DB] task save failed id='+t.id+':',e.message);warnings.push('task '+t.id+': '+e.message);}
       }
       for(const r of(collabRequests||[])){
-        await db.execute(
-          'INSERT INTO collab_requests(id,fromUserId,toUserId,title,description,priority,deadline,projectId,status,taskId)VALUES(?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE status=VALUES(status)',
-          [r.id,r.fromUserId,r.toUserId,r.title,r.desc||'',r.priority||'medium',r.deadline||null,r.projectId||null,r.status||'pending',r.taskId||null]
-        );
+        try{
+          await db.execute(
+            'INSERT INTO collab_requests(id,fromUserId,toUserId,title,description,priority,deadline,projectId,status,taskId)VALUES(?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE status=VALUES(status)',
+            [r.id,r.fromUserId,r.toUserId,r.title,r.desc||'',r.priority||'medium',r.deadline||null,r.projectId||null,r.status||'pending',r.taskId||null]
+          );
+        }catch(e){console.log('  [DB] collab request save failed id='+r.id+':',e.message);warnings.push('collab '+r.id+': '+e.message);}
       }
       if(Array.isArray(customRoles)){
-        await db.execute('INSERT INTO app_settings(settingKey,settingValue)VALUES(?,?) ON DUPLICATE KEY UPDATE settingValue=VALUES(settingValue)',['customRoles',JSON.stringify(customRoles)]);
+        try{
+          await db.execute('INSERT INTO app_settings(settingKey,settingValue)VALUES(?,?) ON DUPLICATE KEY UPDATE settingValue=VALUES(settingValue)',['customRoles',JSON.stringify(customRoles)]);
+        }catch(e){console.log('  [DB] customRoles save failed:',e.message);warnings.push('customRoles: '+e.message);}
       }
       sf({users,projects,tasks,collabRequests,customRoles});
+      if(warnings.length)return res.json({ok:true,warning:warnings.join('; ')});
     }else{
       sf({users,projects,tasks,collabRequests,customRoles});
     }
