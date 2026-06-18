@@ -36,6 +36,15 @@ async function ensureChatTable(){
   catch(e){console.log('  [DB] metrics col:',e.message);}
   try{await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS metricData JSON NULL DEFAULT NULL');}
   catch(e){console.log('  [DB] metricData col:',e.message);}
+  // Add deleted/deletedAt columns if missing (project trash/soft-delete)
+  try{await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS deleted TINYINT(1) NOT NULL DEFAULT 0');}
+  catch(e){console.log('  [DB] deleted col:',e.message);}
+  try{await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS deletedAt VARCHAR(40) NULL DEFAULT NULL');}
+  catch(e){console.log('  [DB] deletedAt col:',e.message);}
+  try{await db.execute('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deleted TINYINT(1) NOT NULL DEFAULT 0');}
+  catch(e){console.log('  [DB] tasks deleted col:',e.message);}
+  try{await db.execute('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deletedAt VARCHAR(40) NULL DEFAULT NULL');}
+  catch(e){console.log('  [DB] tasks deletedAt col:',e.message);}
 }
 async function seedDB(){
   try{
@@ -108,8 +117,8 @@ app.get('/api/data',async(req,res)=>{
       const[tasks]=await db.execute('SELECT * FROM tasks');
       const[requests]=await db.execute('SELECT * FROM collab_requests');
       users.forEach(u=>{u.access=pj(u.access,[]);});
-      projects.forEach(p=>{p.kpis=pj(p.kpis,[]);p.issues=pj(p.issues,[]);p.monthlyPlan=pj(p.monthlyPlan,[]);p.metrics=pj(p.metrics,null);p.metricData=pj(p.metricData,{});p.desc=p.description||'';});
-      tasks.forEach(t=>{t.kpis=pj(t.kpis,[]);t.issues=pj(t.issues,[]);t.subtasks=pj(t.subtasks,[]);t.desc=t.description||'';});
+      projects.forEach(p=>{p.kpis=pj(p.kpis,[]);p.issues=pj(p.issues,[]);p.monthlyPlan=pj(p.monthlyPlan,[]);p.metrics=pj(p.metrics,null);p.metricData=pj(p.metricData,{});p.desc=p.description||'';p.deleted=!!p.deleted;if(!p.deletedAt)delete p.deletedAt;});
+      tasks.forEach(t=>{t.kpis=pj(t.kpis,[]);t.issues=pj(t.issues,[]);t.subtasks=pj(t.subtasks,[]);t.desc=t.description||'';t.deleted=!!t.deleted;if(!t.deletedAt)delete t.deletedAt;});
       return res.json({ok:true,users,projects,tasks,collabRequests:requests});
     }
     const d=lf();
@@ -146,14 +155,14 @@ app.post('/api/data',async(req,res)=>{
       }
       for(const p of(projects||[])){
         await db.execute(
-          'INSERT INTO projects(id,name,stage,status,owner,ownerColor,northStar,budgetPlan,budgetFact,deadline,progress,yearlyGoal,kpis,issues,monthlyPlan,description,metrics,metricData)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),stage=VALUES(stage),status=VALUES(status),owner=VALUES(owner),northStar=VALUES(northStar),budgetPlan=VALUES(budgetPlan),budgetFact=VALUES(budgetFact),deadline=VALUES(deadline),progress=VALUES(progress),yearlyGoal=VALUES(yearlyGoal),kpis=VALUES(kpis),issues=VALUES(issues),monthlyPlan=VALUES(monthlyPlan),description=VALUES(description),metrics=VALUES(metrics),metricData=VALUES(metricData)',
-          [p.id,p.name,p.stage||'',p.status||'on_track',p.owner||'',p.ownerColor||'#4f6ef7',p.northStar||'',p.budgetPlan||0,p.budgetFact||0,p.deadline||null,p.progress||0,p.yearlyGoal||'',JSON.stringify(p.kpis||[]),JSON.stringify(p.issues||[]),JSON.stringify(p.monthlyPlan||[]),p.desc||'',p.metrics?JSON.stringify(p.metrics):null,JSON.stringify(p.metricData||{})]
+          'INSERT INTO projects(id,name,stage,status,owner,ownerColor,northStar,budgetPlan,budgetFact,deadline,progress,yearlyGoal,kpis,issues,monthlyPlan,description,metrics,metricData,deleted,deletedAt)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),stage=VALUES(stage),status=VALUES(status),owner=VALUES(owner),northStar=VALUES(northStar),budgetPlan=VALUES(budgetPlan),budgetFact=VALUES(budgetFact),deadline=VALUES(deadline),progress=VALUES(progress),yearlyGoal=VALUES(yearlyGoal),kpis=VALUES(kpis),issues=VALUES(issues),monthlyPlan=VALUES(monthlyPlan),description=VALUES(description),metrics=VALUES(metrics),metricData=VALUES(metricData),deleted=VALUES(deleted),deletedAt=VALUES(deletedAt)',
+          [p.id,p.name,p.stage||'',p.status||'on_track',p.owner||'',p.ownerColor||'#4f6ef7',p.northStar||'',p.budgetPlan||0,p.budgetFact||0,p.deadline||null,p.progress||0,p.yearlyGoal||'',JSON.stringify(p.kpis||[]),JSON.stringify(p.issues||[]),JSON.stringify(p.monthlyPlan||[]),p.desc||'',p.metrics?JSON.stringify(p.metrics):null,JSON.stringify(p.metricData||{}),p.deleted?1:0,p.deletedAt||null]
         );
       }
       for(const t of(tasks||[])){
         await db.execute(
-          'INSERT INTO tasks(id,projectId,title,owner,deadline,status,priority,sprint,goal,progress,kpis,issues,description,reqId,subtasks)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),owner=VALUES(owner),deadline=VALUES(deadline),status=VALUES(status),priority=VALUES(priority),sprint=VALUES(sprint),goal=VALUES(goal),progress=VALUES(progress),kpis=VALUES(kpis),issues=VALUES(issues),description=VALUES(description),subtasks=VALUES(subtasks)',
-          [t.id,t.projectId||null,t.title,t.owner||'',t.deadline||null,t.status||'todo',t.priority||'medium',t.sprint||'',t.goal||'',t.progress||null,JSON.stringify(t.kpis||[]),JSON.stringify(t.issues||[]),t.desc||'',t.reqId||null,JSON.stringify(t.subtasks||[])]
+          'INSERT INTO tasks(id,projectId,title,owner,deadline,status,priority,sprint,goal,progress,kpis,issues,description,reqId,subtasks,deleted,deletedAt)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),owner=VALUES(owner),deadline=VALUES(deadline),status=VALUES(status),priority=VALUES(priority),sprint=VALUES(sprint),goal=VALUES(goal),progress=VALUES(progress),kpis=VALUES(kpis),issues=VALUES(issues),description=VALUES(description),subtasks=VALUES(subtasks),deleted=VALUES(deleted),deletedAt=VALUES(deletedAt)',
+          [t.id,t.projectId||null,t.title,t.owner||'',t.deadline||null,t.status||'todo',t.priority||'medium',t.sprint||'',t.goal||'',t.progress||null,JSON.stringify(t.kpis||[]),JSON.stringify(t.issues||[]),t.desc||'',t.reqId||null,JSON.stringify(t.subtasks||[]),t.deleted?1:0,t.deletedAt||null]
         );
       }
       for(const r of(collabRequests||[])){
