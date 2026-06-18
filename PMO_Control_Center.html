@@ -201,11 +201,17 @@ tbody td{padding:9px 10px;vertical-align:middle}
 .atab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .user-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:7px;display:flex;align-items:center;gap:10px;box-shadow:var(--shadow)}
 .role-badge{padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700}
+.role-admin{background:#fee2e2;color:#b91c1c}
 .role-ceo{background:#dbeafe;color:#1d4ed8}
+.role-head{background:#fef3c7;color:#b45309}
 .role-manager{background:#ede9fe;color:#6d28d9}
+.role-senior{background:#dcfce7;color:#15803d}
 .role-member{background:#f1f5f9;color:#475569}
+[data-theme="dark"] .role-admin{background:#dc262622;color:#f87171}
 [data-theme="dark"] .role-ceo{background:#4f6ef722;color:#4f6ef7}
+[data-theme="dark"] .role-head{background:#d9770622;color:#fbbf24}
 [data-theme="dark"] .role-manager{background:#7c3aed22;color:#a78bfa}
+[data-theme="dark"] .role-senior{background:#16a34a22;color:#4ade80}
 [data-theme="dark"] .role-member{background:#1f293733;color:#8892a4}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -700,7 +706,7 @@ tbody td{padding:9px 10px;vertical-align:middle}
     <h2 id="user-modal-title">➕ Новый пользователь</h2>
     <div class="fg">
       <div class="fi full"><label>Имя Фамилия *</label><input id="um-name"></div>
-      <div class="fi"><label>Роль</label><select id="um-role"><option value="ceo">👑 CEO / Admin</option><option value="manager" selected>📋 Менеджер</option><option value="member">👤 Сотрудник</option></select></div>
+      <div class="fi"><label>Роль</label><select id="um-role" onchange="renderAccessChecks(ROLE_TABS[this.value]||[],[]);"><option value="admin">⚙️ Админ</option><option value="ceo">👑 Руководитель</option><option value="head">🏢 Начальник</option><option value="manager" selected>📋 Проект-менеджер</option><option value="senior">⭐ Старший</option><option value="member">👤 Сотрудник</option></select></div>
       <div class="fi"><label>Продукт / Отдел</label><input id="um-product"></div>
       <div class="fi full"><label>Email</label><input id="um-email" type="email"></div>
       <div class="fi full"><label>Должность</label><input id="um-pos"></div>
@@ -737,7 +743,26 @@ const SCOL={'Инициация':'#4f6ef7','Планирование':'#7c3aed',
 const ACOLS=['#4f6ef7','#7c3aed','#ef4444','#22c55e','#f59e0b','#06b6d4','#ec4899'];
 const ALL_TABS=['overview','projects','metrics','kanban','gantt','calendar','plans','tasks','collab','admin'];
 const TAB_LABELS={'overview':'📊 Обзор','projects':'📋 Проекты','metrics':'📐 Метрики','kanban':'🗂 Kanban','gantt':'📊 Ганtt','calendar':'📅 Календарь','plans':'📈 Планы','tasks':'✅ Задачи','collab':'🤝 Запросы','admin':'⚙️ Админ'};
-const ROLE_TABS={ceo:ALL_TABS,manager:['overview','projects','metrics','kanban','gantt','calendar','plans','tasks','collab'],member:['metrics','tasks','calendar','collab']};
+// ---- STATIC ROLE ACCESS MATRIX ----
+// scope: 'all' = sees every product; 'own' = sees only products they own/are assigned to/have tasks in
+// canEdit: can edit product/task structure (not just own tasks' status/comments)
+// manageUsers: can manage users in Admin → Пользователи
+const ROLE_TABS={
+  admin:ALL_TABS,
+  ceo:ALL_TABS,
+  head:['overview','projects','metrics','kanban','gantt','calendar','plans','tasks','collab'],
+  manager:['overview','projects','metrics','kanban','gantt','calendar','plans','tasks','collab'],
+  senior:['overview','metrics','kanban','gantt','calendar','tasks','collab'],
+  member:['metrics','tasks','calendar','collab']
+};
+const ROLE_SCOPE={admin:'all',ceo:'all',head:'own',manager:'own',senior:'own',member:'own'};
+const ROLE_EDIT={admin:true,ceo:true,head:true,manager:true,senior:false,member:false};
+const ROLE_MANAGE_USERS={admin:true,ceo:true,head:false,manager:false,senior:false,member:false};
+const ROLE_LABELS={admin:'⚙️ Админ',ceo:'👑 Руководитель',head:'🏢 Начальник',manager:'📋 Проект-менеджер',senior:'⭐ Старший',member:'👤 Сотрудник'};
+const ROLE_BADGE={admin:'role-admin',ceo:'role-ceo',head:'role-head',manager:'role-manager',senior:'role-senior',member:'role-member'};
+function roleScope(){return (currentUser&&ROLE_SCOPE[currentUser.role])||'own';}
+function canEditData(){return !!(currentUser&&ROLE_EDIT[currentUser.role]);}
+function isAdminRole(){return !!(currentUser&&ROLE_MANAGE_USERS[currentUser.role]);}
 
 // DATA
 let projects=[
@@ -977,7 +1002,7 @@ function canAccess(tab){if(!currentUser)return false;var a=currentUser.access||R
 // PROFILE
 function openProfileModal(){
   if(!currentUser)return;
-  var rl={ceo:'👑 CEO / Admin',manager:'📋 Менеджер',member:'👤 Сотрудник'}[currentUser.role]||'';
+  var rl=ROLE_LABELS[currentUser.role]||'';
   document.getElementById('profile-info').innerHTML=
     '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--card2);border-radius:8px">'+
     '<div class="avatar" style="background:'+ucolor(currentUser.id)+';width:40px;height:40px;font-size:14px">'+ini(currentUser.name)+'</div>'+
@@ -1028,7 +1053,16 @@ function activeTasks(){
   return biTasks.filter(function(t){return !t.projectId||activeIds[t.projectId];});
 }
 function activeSubtasks(t){return (t.subtasks||[]);}
-function activeProjects(){return projects.filter(function(p){return !p.deleted;});}
+function hasProductAccess(p){
+  if(!currentUser||!p)return false;
+  if(roleScope()==='all')return true;
+  if(p.owner&&currentUser.name&&p.owner.trim().toLowerCase()===currentUser.name.trim().toLowerCase())return true;
+  if(currentUser.product&&p.name&&currentUser.product.split(',').map(function(s){return s.trim().toLowerCase();}).indexOf(p.name.trim().toLowerCase())>=0)return true;
+  return false;
+}
+function activeProjects(){
+  return projects.filter(function(p){return !p.deleted;}).filter(hasProductAccess);
+}
 
 // ---- TOGGLE SUBTASK DONE ----
 function toggleSubtask(taskId,subId){
@@ -1042,7 +1076,7 @@ function toggleSubtask(taskId,subId){
 // ---- RESTORE / PERM-DELETE (admin only, projects only) ----
 function renderAdminTrash(){
   var cont=document.getElementById('atab-trash');if(!cont)return;
-  var isAdmin=currentUser&&(currentUser.role==='ceo'||currentUser.role==='manager');
+  var isAdmin=isAdminRole();
   var deletedProjs=deletedProjects();
   var html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px"><span style="font-size:13px;font-weight:700">🗑 Корзина</span>';
   if(isAdmin&&deletedProjs.length){
@@ -1149,7 +1183,6 @@ function renderCharts(){
 // TABLE
 function getFiltered(){
   var list=activeProjects();
-  if(currentUser&&currentUser.role==='manager'){list=list.filter(function(p){return p.owner===currentUser.name||(currentUser.product&&currentUser.product.indexOf(p.name)>=0);});}
   var q=(document.getElementById('f-search')||{}).value||'';
   var st=(document.getElementById('f-stage')||{}).value||'';
   var ss=(document.getElementById('f-status')||{}).value||'';
@@ -1201,7 +1234,7 @@ function renderKanban(){
   document.getElementById('kanban-board').innerHTML=STAGES.map(function(stage){
     var cards=activeProjects().filter(function(p){return p.stage===stage;});
     var sc=SCOL[stage]||'#6b7280';
-    var canEdit=currentUser&&(currentUser.role==='ceo'||currentUser.role==='manager');
+    var canEdit=canEditData();
     var inner=cards.length?cards.map(function(p){
       var s=SMAP[p.status]||{};
       var stageOpts=STAGES.map(function(st){return '<option value="'+st+'"'+(st===p.stage?' selected':'')+'>'+st+'</option>';}).join('');
@@ -1396,7 +1429,7 @@ function renderCollab(){
   document.getElementById('my-requests').innerHTML=mine.length?mine.map(function(r){return reqCard(r,false);}).join(''):'<div class="empty" style="padding:20px">Нет исходящих запросов</div>';
   document.getElementById('to-me-requests').innerHTML=tome.length?tome.map(function(r){return reqCard(r,true);}).join(''):'<div class="empty" style="padding:20px">Нет входящих запросов</div>';
   var allSec=document.getElementById('all-requests-section');
-  if(currentUser.role==='ceo'){allSec.style.display='block';document.getElementById('all-requests').innerHTML=collabRequests.length?collabRequests.map(function(r){return reqCard(r,false,true);}).join(''):'<div class="empty">Нет запросов</div>';}
+  if(isAdminRole()){allSec.style.display='block';document.getElementById('all-requests').innerHTML=collabRequests.length?collabRequests.map(function(r){return reqCard(r,false,true);}).join(''):'<div class="empty">Нет запросов</div>';}
   else allSec.style.display='none';
 }
 function reqCard(r,canApprove,showAll){
@@ -1413,13 +1446,13 @@ function reqCard(r,canApprove,showAll){
     html+='<button class="btn btn-green btn-sm" onclick="approveReq('+r.id+')">✅ Одобрить</button>';
     html+='<button class="btn btn-red btn-sm" onclick="rejectReq('+r.id+')">❌ Отклонить</button>';
   }
-  if(r.status==='approved'&&(r.toUserId===currentUser.id||currentUser.role==='ceo')){
+  if(r.status==='approved'&&(r.toUserId===currentUser.id||isAdminRole())){
     html+='<button class="btn btn-yellow btn-sm" onclick="startReq('+r.id+')">▶ В работу</button>';
   }
-  if(r.status==='inprogress'&&(r.toUserId===currentUser.id||currentUser.role==='ceo')){
+  if(r.status==='inprogress'&&(r.toUserId===currentUser.id||isAdminRole())){
     html+='<button class="btn btn-green btn-sm" onclick="doneReq('+r.id+')">✓ Выполнено</button>';
   }
-  if(r.fromUserId===currentUser.id||currentUser.role==='ceo'){
+  if(r.fromUserId===currentUser.id||isAdminRole()){
     html+='<button class="btn btn-red btn-sm" onclick="deleteReq('+r.id+')">🗑</button>';
   }
   html+='</div></div>';
@@ -1453,7 +1486,7 @@ function openDetail(id){
   var bpf=p.budgetPlan?Math.round((Number(p.budgetFact)||0)/(Number(p.budgetPlan))*100):0;
   var pt=activeTasks().filter(function(t){return t.projectId===p.id;});
   var ptd=pt.filter(function(t){return t.status==='done';}).length;
-  var canEdit=currentUser&&(currentUser.role==='ceo'||p.owner===currentUser.name);
+  var canEdit=currentUser&&(canEditData()||p.owner===currentUser.name);
   document.getElementById('panel-title').innerHTML='<span style="color:var(--accent)">📁</span> '+p.name;
   var stageOpts=STAGES.map(function(st){return '<option value="'+st+'"'+(st===p.stage?' selected':'')+'>'+st+'</option>';}).join('');
 
@@ -1645,7 +1678,7 @@ function setMetricsFieldsDisabled(disabled){
 function isMetricsEditable(p){
   if(!p)return true; // new product — always editable at creation
   if(!currentUser)return false;
-  if(currentUser.role==='ceo'||currentUser.role==='manager')return true;
+  if(canEditData())return true;
   return (p.owner||'').trim().toLowerCase()===(currentUser.name||'').trim().toLowerCase();
 }
 function unlockMetricsEdit(){
@@ -1999,8 +2032,8 @@ function toggleSubtaskChecklist(taskId,subId,idx){
 function setAdminTab(tab){activeAdminTab=tab;document.querySelectorAll('.atab').forEach(function(el,i){el.classList.toggle('active',['users','products','system','reports','trash'][i]===tab);});['users','products','system','reports','trash'].forEach(function(t){var el=document.getElementById('atab-'+t);if(el)el.style.display=t===tab?'block':'none';});if(tab==='users')renderAdminUsers();else if(tab==='products')renderAdminProducts();else if(tab==='system')renderAdminSystem();else if(tab==='reports')renderAdminReports();else if(tab==='trash')renderAdminTrash();}
 function renderAdminUsers(){
   var cont=document.getElementById('atab-users');
-  var rl={ceo:'role-ceo',manager:'role-manager',member:'role-member'};
-  var rn={ceo:'👑 CEO',manager:'📋 Менеджер',member:'👤 Сотрудник'};
+  var rl=ROLE_BADGE;
+  var rn=ROLE_LABELS;
   var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:13px"><span style="font-size:13px;font-weight:700">👥 Пользователи ('+users.length+')</span><button class="btn btn-primary btn-sm" onclick="openAddUserModal()">+ Добавить</button></div>';
   users.forEach(function(u){
     html+='<div class="user-card"><div class="avatar" style="background:'+ucolor(u.id)+';width:34px;height:34px;font-size:12px">'+ini(u.name)+'</div>';
