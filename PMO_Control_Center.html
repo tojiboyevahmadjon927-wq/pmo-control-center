@@ -2528,11 +2528,36 @@ function saveUser(){
       }
     }
   }
-  else{if(!pass||pass.length<4){alert('Укажите пароль (минимум 4 символа)');return;}users.push(Object.assign({id:Math.max.apply(null,[0].concat(users.map(function(u){return u.id;})))+1,password:pass,added:new Date().toISOString().slice(0,10)},data));}
+  else{
+    if(!pass||pass.length<4){alert('Укажите пароль (минимум 4 символа)');return;}
+    // Fix: id used to be guessed client-side from the local `users` array,
+    // then pushed via the full-payload syncToServer(). That array is only as
+    // fresh as this tab's last 6s poll, so a stale tab's sync could collide
+    // with another user's id or (via the old delete-by-absence logic) wipe
+    // out a user created in a different tab/session. Server now assigns the
+    // id atomically.
+    var body=Object.assign({password:pass},data);
+    authFetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok){alert('Не удалось создать пользователя: '+((d&&d.error)||'ошибка'));return;}
+      users.push(d.user);
+      closeModal('user-modal');renderAdminUsers();buildTabs();
+    }).catch(function(){alert('Не удалось создать пользователя: ошибка сети');});
+    return;
+  }
   closeModal('user-modal');renderAdminUsers();buildTabs();
   syncToServer();
 }
-function deleteUser(id){if(!confirm('Удалить пользователя?'))return;users=users.filter(function(u){return u.id!==id;});renderAdminUsers();syncToServer();}
+function deleteUser(id){
+  if(!confirm('Удалить пользователя?'))return;
+  // Fix: deletion used to be inferred server-side from "id missing from the
+  // synced array" — unsafe for the same stale-tab reason as creation. Now a
+  // dedicated per-record delete, matching projects/tasks/collab-requests.
+  users=users.filter(function(u){return u.id!==id;});
+  renderAdminUsers();
+  authFetch('/api/users/'+id,{method:'DELETE'}).then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.ok)alert('Не удалось удалить пользователя на сервере: '+((d&&d.error)||'ошибка'));
+  }).catch(function(){alert('Не удалось удалить пользователя: ошибка сети');});
+}
 function adminResetPass(id){
   var np=prompt('Введите новый пароль для пользователя (минимум 4 символа):');
   if(!np||np.length<4){alert('Пароль слишком короткий');return;}

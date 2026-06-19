@@ -284,10 +284,17 @@ app.get('/api/data',requireAuth,async(req,res)=>{
 // a user's scope as soon as they synced. Deletion of those three now happens
 // ONLY through the dedicated DELETE endpoints below (/api/projects/:id,
 // /api/tasks/:id, /api/collab-requests/:id) and POST /api/admin/reset-all.
-// This route is pure per-record upsert for them. The `users` table is the one
-// exception: it's never scope-filtered on GET (every authed user still gets
-// the full roster, minus passwords), so delete-by-absence stays safe there
-// and remains gated behind manageUsers as before.
+// This route is pure per-record upsert for them. The `users` table USED to be
+// the one exception (delete-by-absence on the theory that GET never
+// scope-filters it, so every client always holds the full roster). That
+// theory breaks in practice: a browser tab only refreshes its `users` array
+// every POLL_MS (6s) via pollServer(), and any OTHER tab/session that
+// triggers a full sync (e.g. editing a project) sends ITS OWN possibly-stale
+// `users` snapshot — one that predates a user created in another tab. The
+// server then deleted that "missing" user. This is the same id-guessing/
+// stale-snapshot bug class as Fix 1, just for users. Users are now also pure
+// per-record upsert here; creation/deletion go through the dedicated
+// /api/users endpoints below.
 app.post('/api/data',requireAuth,async(req,res)=>{
   const{users,projects,tasks,collabRequests,customRoles}=req.body;
   const authUser=req.authUser;
@@ -298,14 +305,8 @@ app.post('/api/data',requireAuth,async(req,res)=>{
     const allowedProjects=(projects||[]).filter(p=>userCanWriteProject(authUser,p,customRoles2));
     const allowedTasks=(tasks||[]).filter(t=>userCanWriteTask(authUser,t,projectsById,customRoles2));
     if(db){
-      // Users are still synced as a full list (GET never scope-filters them),
-      // so delete-by-absence stays safe there and remains gated behind
-      // manageUsers. Projects/tasks/collabRequests are NOT deleted here
-      // anymore — see the dedicated DELETE endpoints below.
-      if(canManageUsers&&Array.isArray(users)){
-        if(users.length){const ids=users.map(u=>u.id);await db.execute(`DELETE FROM users WHERE id NOT IN (${ids.map(()=>'?').join(',')})`,ids);}
-        else await db.execute('DELETE FROM users');
-      }
+      // No delete-by-absence for users anymore (see comment above the route) —
+      // this is pure per-record upsert; deletion goes through DELETE /api/users/:id.
       var warnings=[];
       if(canManageUsers){
         for(const u of(users||[])){
@@ -359,11 +360,18 @@ app.post('/api/data',requireAuth,async(req,res)=>{
       const cur=lf()||{users:[],projects:[],tasks:[],collabRequests:[],customRoles:[]};
       // Client never holds passwords (GET strips them), so when merging an
       // updated users array back in, keep each user's existing stored password.
+      // Merge by id instead of replacing the whole array — same stale-snapshot
+      // problem as the DB branch above: this payload's `users` only reflects
+      // whatever this browser tab last polled, so treating it as the full
+      // truth would delete any user created/edited in another tab since.
       const curUsersById={};(cur.users||[]).forEach(u=>{curUsersById[u.id]=u;});
-      const finalUsers=canManageUsers?(users||cur.users).map(u=>{
-        const prev=curUsersById[u.id];
-        return Object.assign({},u,{password:(prev&&prev.password)||hashPassword(u.password||makeToken())});
-      }):cur.users;
+      if(canManageUsers){
+        (users||[]).forEach(u=>{
+          const prev=curUsersById[u.id];
+          curUsersById[u.id]=Object.assign({},prev,u,{password:(prev&&prev.password)||hashPassword(u.password||makeToken())});
+        });
+      }
+      const finalUsers=Object.values(curUsersById);
       // Pure upsert — no deletion inferred from absence anymore (projects/tasks
       // are scope-filtered on GET now, so "missing from this payload" just
       // means "outside this user's view", not "delete me"). Deletion happens
@@ -459,6 +467,64 @@ app.delete('/api/collab-requests/:id',requireAuth,async(req,res)=>{
       if(!isParticipant&&!canManage)return res.status(403).json({ok:false,error:'forbidden'});
       d.collabRequests=(d.collabRequests||[]).filter(x=>x.id!==id);
       d.tasks=(d.tasks||[]).filter(t=>t.reqId!==id);
+      sf(d);
+    }
+    res.json({ok:true});
+  }catch(e){res.json({ok:false,error:e.message});}
+});
+
+// ============================================================
+// FIX 4: server-assigned id for new users + dedicated delete.
+// Same class of bug as Fix 1 (client guessed the id from its own in-memory
+// array, then synced through the full-payload POST /api/data, which used to
+// also delete-by-absence). With users specifically, the in-memory array is
+// only as fresh as this tab's last poll, so a stale tab's sync could both
+// stomp a colliding id AND wipe out a user created elsewhere. The server now
+// owns id assignment and deletion is per-record.
+// ============================================================
+async function nextUserId(){
+  if(db){const[rows]=await db.execute('SELECT COALESCE(MAX(id),0) AS m FROM users');return rows[0].m+1;}
+  const d=lf()||{users:[]};
+  return Math.max(0,...(d.users||[]).map(u=>u.id))+1;
+}
+
+app.post('/api/users',requireAuth,async(req,res)=>{
+  try{
+    const customRoles=await loadCustomRoles();
+    if(!manageUsersOf(customRoles,req.authUser.role))return res.status(403).json({ok:false,error:'forbidden'});
+    const body=req.body||{};
+    if(!body.name||!body.password||String(body.password).length<4)return res.json({ok:false,error:'missing_fields'});
+    const id=await nextUserId();
+    const user={
+      id,name:body.name,role:body.role||'member',product:body.product||'',
+      email:body.email||'',pos:body.pos||'',access:body.access||[],
+      added:new Date().toISOString().slice(0,10)
+    };
+    if(db){
+      await db.execute(
+        'INSERT INTO users(id,name,role,product,email,pos,password,access)VALUES(?,?,?,?,?,?,?,?)',
+        [user.id,user.name,user.role,user.product,user.email,user.pos,hashPassword(body.password),JSON.stringify(user.access)]
+      );
+    }else{
+      const d=lf()||{users:[],projects:[],tasks:[],collabRequests:[],customRoles:[]};
+      d.users=d.users||[];
+      d.users.push(Object.assign({password:hashPassword(body.password)},user));
+      sf(d);
+    }
+    res.json({ok:true,user});
+  }catch(e){res.json({ok:false,error:e.message});}
+});
+
+app.delete('/api/users/:id',requireAuth,async(req,res)=>{
+  const id=Number(req.params.id);
+  try{
+    const customRoles=await loadCustomRoles();
+    if(!manageUsersOf(customRoles,req.authUser.role))return res.status(403).json({ok:false,error:'forbidden'});
+    if(db){
+      await db.execute('DELETE FROM users WHERE id=?',[id]);
+    }else{
+      const d=lf()||{users:[]};
+      d.users=(d.users||[]).filter(u=>u.id!==id);
       sf(d);
     }
     res.json({ok:true});
