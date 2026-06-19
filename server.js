@@ -86,6 +86,18 @@ function userCanWriteTask(authUser,t,projectsById,customRoles){
   if(proj&&norm(proj.owner)===norm(authUser.name))return true;
   return false;
 }
+// Read-visibility for a task — mirrors the client's activeTasks() exactly:
+// a task with no projectId is always visible; otherwise visibility is
+// inherited from the project's visibility (userCanSeeProject). If the
+// referenced project doesn't exist at all, the task is hidden (same as the
+// client, where an orphaned projectId never matches activeIds[...]).
+function userCanSeeTask(authUser,t,projectsById,customRoles){
+  if(scopeOf(customRoles,authUser.role)==='all')return true;
+  if(!t.projectId)return true;
+  const proj=projectsById[t.projectId];
+  if(!proj)return false;
+  return userCanSeeProject(authUser,proj,customRoles);
+}
 const DB={host:process.env.DB_HOST||'localhost',port:Number(process.env.DB_PORT)||3306,user:process.env.DB_USER||'root',password:process.env.DB_PASSWORD||'',database:process.env.DB_NAME||'pmo_db',charset:'utf8mb4',waitForConnections:true,connectionLimit:10,queueLimit:0};
 let db=null;
 async function connectDB(){
@@ -231,35 +243,51 @@ app.post('/api/logout',(req,res)=>{
   res.json({ok:true});
 });
 
+// Filters projects/tasks down to what authUser is actually allowed to SEE,
+// mirroring the client's activeProjects()/activeTasks(). Users/collabRequests/
+// customRoles are intentionally left unfiltered (out of scope for this fix —
+// see PMO access audit notes). No-op (returns input as-is) for scope:'all'.
+function scopeFilterData(authUser,projects,tasks,customRoles){
+  if(scopeOf(customRoles,authUser.role)==='all')return{projects,tasks};
+  const visibleProjects=projects.filter(p=>userCanSeeProject(authUser,p,customRoles));
+  const projectsById={};projects.forEach(p=>{projectsById[p.id]=p;});
+  const visibleTasks=tasks.filter(t=>userCanSeeTask(authUser,t,projectsById,customRoles));
+  return{projects:visibleProjects,tasks:visibleTasks};
+}
 app.get('/api/data',requireAuth,async(req,res)=>{
   try{
     if(db){
       const[users]=await db.execute('SELECT * FROM users');
-      const[projects]=await db.execute('SELECT * FROM projects');
-      const[tasks]=await db.execute('SELECT * FROM tasks');
+      const[projectsRaw]=await db.execute('SELECT * FROM projects');
+      const[tasksRaw]=await db.execute('SELECT * FROM tasks');
       const[requests]=await db.execute('SELECT * FROM collab_requests');
       let customRoles=[];
       try{const[csRows]=await db.execute('SELECT settingValue FROM app_settings WHERE settingKey=?',['customRoles']);if(csRows[0])customRoles=pj(csRows[0].settingValue,[]);}catch(e){}
       users.forEach(u=>{u.access=pj(u.access,[]);delete u.password;});
-      projects.forEach(p=>{p.kpis=pj(p.kpis,[]);p.issues=pj(p.issues,[]);p.monthlyPlan=pj(p.monthlyPlan,[]);p.metrics=pj(p.metrics,null);p.metricData=pj(p.metricData,{});p.team=pj(p.team,[]);p.biweeklyLog=pj(p.biweeklyLog,[]);p.desc=p.description||'';p.deleted=!!p.deleted;if(!p.deletedAt)delete p.deletedAt;});
-      tasks.forEach(t=>{t.kpis=pj(t.kpis,[]);t.issues=pj(t.issues,[]);t.subtasks=pj(t.subtasks,[]);t.desc=t.description||'';});
+      projectsRaw.forEach(p=>{p.kpis=pj(p.kpis,[]);p.issues=pj(p.issues,[]);p.monthlyPlan=pj(p.monthlyPlan,[]);p.metrics=pj(p.metrics,null);p.metricData=pj(p.metricData,{});p.team=pj(p.team,[]);p.biweeklyLog=pj(p.biweeklyLog,[]);p.desc=p.description||'';p.deleted=!!p.deleted;if(!p.deletedAt)delete p.deletedAt;});
+      tasksRaw.forEach(t=>{t.kpis=pj(t.kpis,[]);t.issues=pj(t.issues,[]);t.subtasks=pj(t.subtasks,[]);t.desc=t.description||'';});
+      const{projects,tasks}=scopeFilterData(req.authUser,projectsRaw,tasksRaw,customRoles);
       return res.json({ok:true,users,projects,tasks,collabRequests:requests,customRoles});
     }
     const d=lf()||{users:[],projects:[],tasks:[],collabRequests:[],customRoles:[]};
     const users2=(d.users||[]).map(u=>{const c=Object.assign({},u);delete c.password;return c;});
-    res.json({ok:true,...d,users:users2});
+    const{projects,tasks}=scopeFilterData(req.authUser,d.projects||[],d.tasks||[],d.customRoles||[]);
+    res.json({ok:true,...d,users:users2,projects,tasks});
   }catch(e){res.json({ok:false,error:e.message});}
 });
 
-// NOTE on write authorization below: the client still syncs the FULL local
-// users/projects/tasks arrays (we deliberately did NOT scope-filter the GET
-// response above, because the existing "DELETE WHERE id NOT IN (incoming ids)"
-// sync logic would otherwise wipe out every record a lower-privilege user's
-// browser doesn't currently hold — i.e. read-scoping would silently destroy
-// data on next save). Instead we gate WRITES per-record: every project/task
-// is only actually upserted if the authenticated user is allowed to write it;
-// unauthorized records are simply left untouched in the DB. The `users` table
-// and `customRoles` are only ever touched by roles with manageUsers rights.
+// NOTE on write authorization below: GET /api/data is now scope-filtered
+// (see scopeFilterData above), which means a lower-privilege user's browser
+// only ever holds a SUBSET of projects/tasks. Because of that, this route no
+// longer infers deletion from "record missing from the incoming array" for
+// projects/tasks/collabRequests — that used to wipe out every record outside
+// a user's scope as soon as they synced. Deletion of those three now happens
+// ONLY through the dedicated DELETE endpoints below (/api/projects/:id,
+// /api/tasks/:id, /api/collab-requests/:id) and POST /api/admin/reset-all.
+// This route is pure per-record upsert for them. The `users` table is the one
+// exception: it's never scope-filtered on GET (every authed user still gets
+// the full roster, minus passwords), so delete-by-absence stays safe there
+// and remains gated behind manageUsers as before.
 app.post('/api/data',requireAuth,async(req,res)=>{
   const{users,projects,tasks,collabRequests,customRoles}=req.body;
   const authUser=req.authUser;
@@ -270,24 +298,13 @@ app.post('/api/data',requireAuth,async(req,res)=>{
     const allowedProjects=(projects||[]).filter(p=>userCanWriteProject(authUser,p,customRoles2));
     const allowedTasks=(tasks||[]).filter(t=>userCanWriteTask(authUser,t,projectsById,customRoles2));
     if(db){
-      // Delete rows that the client removed (upsert below never deletes on its own).
-      // Always uses the FULL incoming id list (not just the allowed subset) so we
-      // never delete records the user simply wasn't permitted to *write*.
+      // Users are still synced as a full list (GET never scope-filters them),
+      // so delete-by-absence stays safe there and remains gated behind
+      // manageUsers. Projects/tasks/collabRequests are NOT deleted here
+      // anymore — see the dedicated DELETE endpoints below.
       if(canManageUsers&&Array.isArray(users)){
         if(users.length){const ids=users.map(u=>u.id);await db.execute(`DELETE FROM users WHERE id NOT IN (${ids.map(()=>'?').join(',')})`,ids);}
         else await db.execute('DELETE FROM users');
-      }
-      if(Array.isArray(projects)){
-        if(projects.length){const ids=projects.map(p=>p.id);await db.execute(`DELETE FROM projects WHERE id NOT IN (${ids.map(()=>'?').join(',')})`,ids);}
-        else await db.execute('DELETE FROM projects');
-      }
-      if(Array.isArray(tasks)){
-        if(tasks.length){const ids=tasks.map(t=>t.id);await db.execute(`DELETE FROM tasks WHERE id NOT IN (${ids.map(()=>'?').join(',')})`,ids);}
-        else await db.execute('DELETE FROM tasks');
-      }
-      if(Array.isArray(collabRequests)){
-        if(collabRequests.length){const ids=collabRequests.map(r=>r.id);await db.execute(`DELETE FROM collab_requests WHERE id NOT IN (${ids.map(()=>'?').join(',')})`,ids);}
-        else await db.execute('DELETE FROM collab_requests');
       }
       var warnings=[];
       if(canManageUsers){
@@ -347,27 +364,126 @@ app.post('/api/data',requireAuth,async(req,res)=>{
         const prev=curUsersById[u.id];
         return Object.assign({},u,{password:(prev&&prev.password)||hashPassword(u.password||makeToken())});
       }):cur.users;
+      // Pure upsert — no deletion inferred from absence anymore (projects/tasks
+      // are scope-filtered on GET now, so "missing from this payload" just
+      // means "outside this user's view", not "delete me"). Deletion happens
+      // only via the dedicated DELETE endpoints below.
       const byId=(arr)=>{const m={};(arr||[]).forEach(x=>m[x.id]=x);return m;};
       const curP=byId(cur.projects),curT=byId(cur.tasks);
       allowedProjects.forEach(p=>{curP[p.id]=p;});
       allowedTasks.forEach(t=>{curT[t.id]=t;});
-      // Respect deletions only for ids the user was allowed to write (or had no record of before).
-      const incomingProjIds=new Set((projects||[]).map(p=>p.id));
-      const finalProjects=Object.values(curP).filter(p=>{
-        if(incomingProjIds.has(p.id))return allowedProjects.some(ap=>ap.id===p.id);
-        return true;
-      });
-      const incomingTaskIds=new Set((tasks||[]).map(t=>t.id));
-      const finalTasks=Object.values(curT).filter(t=>{
-        if(incomingTaskIds.has(t.id))return allowedTasks.some(at=>at.id===t.id);
-        return true;
-      });
+      const finalProjects=Object.values(curP);
+      const finalTasks=Object.values(curT);
       sf({users:finalUsers,projects:finalProjects,tasks:finalTasks,collabRequests:collabRequests||cur.collabRequests,customRoles:canManageUsers?(customRoles||cur.customRoles):cur.customRoles});
     }
     res.json({ok:true});
   }catch(e){
     res.json({ok:false,error:e.message});
   }
+});
+
+// ============================================================
+// DEDICATED DELETE ENDPOINTS
+// Replace the old delete-by-absence sync side-effect now that GET /api/data
+// is scope-filtered. Each is permission-gated per-record, same rules as writes.
+// ============================================================
+app.delete('/api/projects/:id',requireAuth,async(req,res)=>{
+  const id=Number(req.params.id);
+  try{
+    const customRoles=await loadCustomRoles();
+    if(db){
+      const[rows]=await db.execute('SELECT * FROM projects WHERE id=?',[id]);
+      const proj=rows[0];
+      if(!proj)return res.json({ok:true});
+      if(!userCanWriteProject(req.authUser,proj,customRoles))return res.status(403).json({ok:false,error:'forbidden'});
+      await db.execute('DELETE FROM tasks WHERE projectId=?',[id]);
+      await db.execute('DELETE FROM projects WHERE id=?',[id]);
+    }else{
+      const d=lf()||{projects:[],tasks:[]};
+      const proj=(d.projects||[]).find(p=>p.id===id);
+      if(!proj)return res.json({ok:true});
+      if(!userCanWriteProject(req.authUser,proj,customRoles))return res.status(403).json({ok:false,error:'forbidden'});
+      d.projects=(d.projects||[]).filter(p=>p.id!==id);
+      d.tasks=(d.tasks||[]).filter(t=>t.projectId!==id);
+      sf(d);
+    }
+    res.json({ok:true});
+  }catch(e){res.json({ok:false,error:e.message});}
+});
+
+app.delete('/api/tasks/:id',requireAuth,async(req,res)=>{
+  const id=Number(req.params.id);
+  try{
+    const customRoles=await loadCustomRoles();
+    if(db){
+      const[trows]=await db.execute('SELECT * FROM tasks WHERE id=?',[id]);
+      const task=trows[0];
+      if(!task)return res.json({ok:true});
+      const[projs]=await db.execute('SELECT * FROM projects');
+      const projectsById={};projs.forEach(p=>{projectsById[p.id]=p;});
+      if(!userCanWriteTask(req.authUser,task,projectsById,customRoles))return res.status(403).json({ok:false,error:'forbidden'});
+      await db.execute('DELETE FROM tasks WHERE id=?',[id]);
+    }else{
+      const d=lf()||{projects:[],tasks:[]};
+      const task=(d.tasks||[]).find(t=>t.id===id);
+      if(!task)return res.json({ok:true});
+      const projectsById={};(d.projects||[]).forEach(p=>{projectsById[p.id]=p;});
+      if(!userCanWriteTask(req.authUser,task,projectsById,customRoles))return res.status(403).json({ok:false,error:'forbidden'});
+      d.tasks=(d.tasks||[]).filter(t=>t.id!==id);
+      sf(d);
+    }
+    res.json({ok:true});
+  }catch(e){res.json({ok:false,error:e.message});}
+});
+
+// Collab request deletion cascades to any task created from it (mirrors the
+// client's existing deleteReq behavior, which also removed those tasks).
+app.delete('/api/collab-requests/:id',requireAuth,async(req,res)=>{
+  const id=Number(req.params.id);
+  try{
+    const customRoles=await loadCustomRoles();
+    const canManage=manageUsersOf(customRoles,req.authUser.role);
+    if(db){
+      const[rows]=await db.execute('SELECT * FROM collab_requests WHERE id=?',[id]);
+      const r=rows[0];
+      if(!r)return res.json({ok:true});
+      const isParticipant=String(r.fromUserId)===String(req.authUser.id)||String(r.toUserId)===String(req.authUser.id);
+      if(!isParticipant&&!canManage)return res.status(403).json({ok:false,error:'forbidden'});
+      await db.execute('DELETE FROM tasks WHERE reqId=?',[id]);
+      await db.execute('DELETE FROM collab_requests WHERE id=?',[id]);
+    }else{
+      const d=lf()||{collabRequests:[],tasks:[]};
+      const r=(d.collabRequests||[]).find(x=>x.id===id);
+      if(!r)return res.json({ok:true});
+      const isParticipant=String(r.fromUserId)===String(req.authUser.id)||String(r.toUserId)===String(req.authUser.id);
+      if(!isParticipant&&!canManage)return res.status(403).json({ok:false,error:'forbidden'});
+      d.collabRequests=(d.collabRequests||[]).filter(x=>x.id!==id);
+      d.tasks=(d.tasks||[]).filter(t=>t.reqId!==id);
+      sf(d);
+    }
+    res.json({ok:true});
+  }catch(e){res.json({ok:false,error:e.message});}
+});
+
+// Admin "danger zone" wipe — replaces what resetAll() used to achieve purely
+// as a side-effect of the now-removed delete-by-absence sync logic. Wipes
+// projects/tasks/collabRequests only (users and customRoles are untouched,
+// matching the client's resetAll() scope).
+app.post('/api/admin/reset-all',requireAuth,async(req,res)=>{
+  try{
+    const customRoles=await loadCustomRoles();
+    if(!manageUsersOf(customRoles,req.authUser.role))return res.status(403).json({ok:false,error:'forbidden'});
+    if(db){
+      await db.execute('DELETE FROM tasks');
+      await db.execute('DELETE FROM projects');
+      await db.execute('DELETE FROM collab_requests');
+    }else{
+      const d=lf()||{};
+      d.projects=[];d.tasks=[];d.collabRequests=[];
+      sf(d);
+    }
+    res.json({ok:true});
+  }catch(e){res.json({ok:false,error:e.message});}
 });
 
 app.post('/api/password',requireAuth,async(req,res)=>{
