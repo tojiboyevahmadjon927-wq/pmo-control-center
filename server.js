@@ -486,6 +486,149 @@ app.post('/api/admin/reset-all',requireAuth,async(req,res)=>{
   }catch(e){res.json({ok:false,error:e.message});}
 });
 
+// ============================================================
+// SERVER-ASSIGNED IDs FOR NEW PROJECTS/TASKS
+// Bug fixed here: new ids used to be computed on the client as
+// max(locally-held projects/tasks)+1. Since GET /api/data is now
+// scope-filtered (see scopeFilterData above), a non-"all"-scope user's local
+// array only holds what THEY can see — so a client-computed id could collide
+// with an out-of-scope project/task the user never sees, and the upsert's
+// ON DUPLICATE KEY UPDATE would silently overwrite that unrelated record.
+// The server always has the full table, so it must hand out the id.
+// ============================================================
+const ACOLS=['#4f6ef7','#7c3aed','#ef4444','#22c55e','#f59e0b','#06b6d4','#ec4899'];
+const MONTHS=['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+async function nextProjectId(){
+  if(db){const[rows]=await db.execute('SELECT COALESCE(MAX(id),0) AS m FROM projects');return rows[0].m+1;}
+  const d=lf()||{projects:[]};
+  return Math.max(0,...(d.projects||[]).map(p=>p.id))+1;
+}
+async function nextTaskId(){
+  if(db){const[rows]=await db.execute('SELECT COALESCE(MAX(id),0) AS m FROM tasks');return rows[0].m+1;}
+  const d=lf()||{tasks:[]};
+  return Math.max(0,...(d.tasks||[]).map(t=>t.id))+1;
+}
+
+app.post('/api/projects',requireAuth,async(req,res)=>{
+  try{
+    const customRoles=await loadCustomRoles();
+    const body=req.body||{};
+    if(!userCanWriteProject(req.authUser,{owner:body.owner||''},customRoles))return res.status(403).json({ok:false,error:'forbidden'});
+    const id=await nextProjectId();
+    const project={
+      id,name:body.name||'',stage:body.stage||'',status:body.status||'on_track',owner:body.owner||'',
+      ownerColor:ACOLS[id%ACOLS.length],
+      northStar:body.northStar||'',budgetPlan:+body.budgetPlan||0,budgetFact:+body.budgetFact||0,
+      deadline:body.deadline||'—',progress:Math.min(100,Math.max(0,+body.progress||0)),
+      yearlyGoal:body.yearlyGoal||'',
+      kpis:body.kpis||[],issues:body.issues||[],
+      monthlyPlan:MONTHS.map(m=>({month:m,goal:null,actual:null,notes:''})),
+      desc:body.desc||'',metrics:body.metrics||null,metricData:{},
+      team:body.team||[],biweeklyLog:[]
+    };
+    if(db){
+      await db.execute(
+        'INSERT INTO projects(id,name,stage,status,owner,ownerColor,northStar,budgetPlan,budgetFact,deadline,progress,yearlyGoal,kpis,issues,monthlyPlan,description,metrics,metricData,team,biweeklyLog,deleted)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)',
+        [project.id,project.name,project.stage,project.status,project.owner,project.ownerColor,project.northStar,project.budgetPlan,project.budgetFact,project.deadline,project.progress,project.yearlyGoal,JSON.stringify(project.kpis),JSON.stringify(project.issues),JSON.stringify(project.monthlyPlan),project.desc,project.metrics?JSON.stringify(project.metrics):null,JSON.stringify(project.metricData),JSON.stringify(project.team),JSON.stringify(project.biweeklyLog)]
+      );
+    }else{
+      const d=lf()||{projects:[],tasks:[],users:[],collabRequests:[],customRoles:[]};
+      d.projects=d.projects||[];
+      d.projects.push(project);
+      sf(d);
+    }
+    res.json({ok:true,project});
+  }catch(e){res.json({ok:false,error:e.message});}
+});
+
+app.post('/api/tasks',requireAuth,async(req,res)=>{
+  try{
+    const customRoles=await loadCustomRoles();
+    const body=req.body||{};
+    let projectsById={};
+    if(db){const[projs]=await db.execute('SELECT * FROM projects');projs.forEach(p=>{projectsById[p.id]=p;});}
+    else{const d=lf()||{projects:[]};(d.projects||[]).forEach(p=>{projectsById[p.id]=p;});}
+    if(!userCanWriteTask(req.authUser,{owner:body.owner||'',projectId:body.projectId||null},projectsById,customRoles))return res.status(403).json({ok:false,error:'forbidden'});
+    const id=await nextTaskId();
+    const task={
+      id,projectId:body.projectId||null,title:body.title||'',owner:body.owner||'',
+      deadline:body.deadline||'',status:body.status||'todo',priority:body.priority||'medium',
+      sprint:body.sprint||'',goal:body.goal||'',
+      progress:body.progress!=null?body.progress:null,
+      kpis:body.kpis||[],issues:body.issues||[],desc:body.desc||'',
+      hoursPlanned:body.hoursPlanned!=null?body.hoursPlanned:null,
+      hoursActual:body.hoursActual!=null?body.hoursActual:null,
+      comments:[],checklist:[],subtasks:[]
+    };
+    if(db){
+      // Note: hoursPlanned/hoursActual/comments/checklist have no columns in
+      // the `tasks` table (pre-existing gap, unrelated to this fix) — they're
+      // kept in the in-memory/returned object but only actually persist in
+      // file mode, same as the existing POST /api/data upsert behaves today.
+      await db.execute(
+        'INSERT INTO tasks(id,projectId,title,owner,deadline,status,priority,sprint,goal,progress,kpis,issues,description,subtasks)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        [task.id,task.projectId,task.title,task.owner,task.deadline||null,task.status,task.priority,task.sprint,task.goal,task.progress,JSON.stringify(task.kpis),JSON.stringify(task.issues),task.desc,JSON.stringify(task.subtasks)]
+      );
+    }else{
+      const d=lf()||{projects:[],tasks:[],users:[],collabRequests:[],customRoles:[]};
+      d.tasks=d.tasks||[];
+      d.tasks.push(task);
+      sf(d);
+    }
+    res.json({ok:true,task});
+  }catch(e){res.json({ok:false,error:e.message});}
+});
+
+// Creates a collab-request together with its placeholder task, atomically,
+// with server-assigned ids on both. This intentionally does NOT use
+// userCanWriteTask: the sender is never the task's owner (the recipient is —
+// that's the whole point of a collab request), so the normal write-gate
+// would always reject this and the task would silently fail to save. Sending
+// a collab request is its own permission model — any authenticated user may
+// request work from any other user — so no ownership check applies here.
+app.post('/api/collab-requests',requireAuth,async(req,res)=>{
+  try{
+    const body=req.body||{};
+    const toId=+body.toUserId;
+    if(!toId||!body.title)return res.json({ok:false,error:'missing_fields'});
+    let toUser=null;
+    if(db){const[rows]=await db.execute('SELECT id,name FROM users WHERE id=?',[toId]);toUser=rows[0];}
+    else{const d=lf()||{users:[]};toUser=(d.users||[]).find(u=>u.id===toId);}
+    if(!toUser)return res.json({ok:false,error:'recipient_not_found'});
+    const taskId=await nextTaskId();
+    const task={
+      id:taskId,projectId:body.projectId||null,title:body.title,owner:toUser.name,
+      deadline:body.deadline||'',status:'pending_approval',sprint:'Входящие запросы',
+      priority:body.priority||'medium',goal:'',kpis:[],issues:[],desc:body.desc||'',
+      reqId:null,comments:[],checklist:[],subtasks:[]
+    };
+    if(db){
+      const[ins]=await db.execute(
+        'INSERT INTO collab_requests(fromUserId,toUserId,title,description,priority,deadline,projectId,status,taskId)VALUES(?,?,?,?,?,?,?,?,?)',
+        [req.authUser.id,toId,body.title,body.desc||'',body.priority||'medium',body.deadline||null,body.projectId||null,'pending',taskId]
+      );
+      const reqId=ins.insertId;
+      task.reqId=reqId;
+      await db.execute(
+        'INSERT INTO tasks(id,projectId,title,owner,deadline,status,priority,sprint,goal,progress,kpis,issues,description,reqId,subtasks)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        [task.id,task.projectId,task.title,task.owner,task.deadline||null,task.status,task.priority,task.sprint,task.goal,null,JSON.stringify(task.kpis),JSON.stringify(task.issues),task.desc,task.reqId,JSON.stringify(task.subtasks)]
+      );
+      return res.json({ok:true,task,collabRequest:{id:reqId,fromUserId:req.authUser.id,toUserId:toId,title:body.title,desc:body.desc||'',priority:body.priority||'medium',deadline:body.deadline||'',projectId:body.projectId||null,status:'pending',createdAt:new Date().toLocaleDateString('ru'),taskId}});
+    }else{
+      const d=lf()||{projects:[],tasks:[],users:[],collabRequests:[],customRoles:[]};
+      d.collabRequests=d.collabRequests||[];
+      const reqId=Math.max(0,...d.collabRequests.map(r=>r.id))+1;
+      task.reqId=reqId;
+      d.tasks=d.tasks||[];
+      d.tasks.push(task);
+      const collabRequest={id:reqId,fromUserId:req.authUser.id,toUserId:toId,title:body.title,desc:body.desc||'',priority:body.priority||'medium',deadline:body.deadline||'',projectId:body.projectId||null,status:'pending',createdAt:new Date().toLocaleDateString('ru'),taskId};
+      d.collabRequests.push(collabRequest);
+      sf(d);
+      return res.json({ok:true,task,collabRequest});
+    }
+  }catch(e){res.json({ok:false,error:e.message});}
+});
+
 app.post('/api/password',requireAuth,async(req,res)=>{
   const{userId,oldPass,newPass}=req.body;
   // A user may only change their own password via this route.
