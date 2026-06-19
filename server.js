@@ -470,14 +470,54 @@ async function callAI(message,systemPrompt){
   });
 }
 
+// Single /api/ai route (previously this was registered TWICE — the second
+// registration further down was dead code, since Express only ever invokes
+// the first matching handler. That dead handler was actually the more
+// capable one (client-supplied apiKey support + rule-based fallback when no
+// API key is available at all), so it's merged in here instead of discarded.
 app.post('/api/ai',async(req,res)=>{
-  try{
-    const{message,context}=req.body;
-    const sys=`Ты — ИИ-агент PMO Турон Телеком. Отвечай кратко на русском. Используй эмодзи.
+  const{message,context,apiKey}=req.body;
+  if(!message)return res.json({ok:false,error:'no message'});
+  const sys=`Ты — ИИ-агент PMO Турон Телеком. Отвечай кратко на русском. Используй эмодзи.
 Контекст: ${JSON.stringify(context||{}).slice(0,3000)}`;
+  // 1) Client-supplied API key (Groq or Claude) takes priority if provided.
+  if(apiKey&&(apiKey.startsWith('sk-ant-')||apiKey.startsWith('gsk_'))){
+    try{
+      let reply=null,source=null;
+      if(apiKey.startsWith('gsk_')){
+        const resp=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},
+          body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:1024,
+            messages:[{role:'system',content:sys},{role:'user',content:message}]})
+        });
+        const data=await resp.json();
+        if(data.choices&&data.choices[0])reply=data.choices[0].message.content;
+        else throw new Error(data.error?.message||'Groq error');
+        source='groq';
+      }else{
+        const resp=await fetch('https://api.anthropic.com/v1/messages',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01'},
+          body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1024,
+            system:sys,messages:[{role:'user',content:message}]})
+        });
+        const data=await resp.json();
+        if(data.content&&data.content[0])reply=data.content[0].text;
+        else throw new Error(data.error?.message||'Claude error');
+        source='claude';
+      }
+      return res.json({ok:true,reply,source});
+    }catch(e){console.log('[AI] client apiKey failed:',e.message,'— trying server key/local');}
+  }
+  // 2) Server-configured key (env var or agent_config.json) via callAI().
+  try{
     const reply=await callAI(message,sys);
-    res.json({ok:true,reply});
-  }catch(e){res.json({ok:false,error:e.message});}
+    return res.json({ok:true,reply,source:'server-key'});
+  }catch(e){console.log('[AI] server key unavailable:',e.message,'— using rule-based');}
+  // 3) No API key anywhere — fall back to local rule-based responses.
+  const reply=ruleBasedAI(message,context||{});
+  res.json({ok:true,reply,source:'local'});
 });
 
 app.get('/{*splat}',(req,res)=>res.sendFile(path.join(DIR,'PMO_Control_Center.html')));
@@ -559,75 +599,6 @@ app.delete('/api/chat/history',async(req,res)=>{
     else{const d=lf();if(d&&d.chatHistory)delete d.chatHistory[userId];sf(d);}
     res.json({ok:true});
   }catch(e){res.json({ok:false,error:e.message});}
-});
-
-// ============================================================
-// AI AGENT ENDPOINT
-// ============================================================
-app.post('/api/ai', async (req, res) => {
-  const { message, context, apiKey } = req.body;
-  if (!message) return res.json({ ok: false, error: 'no message' });
-
-  // Build system prompt with project context
-  const systemPrompt = `Ты — ИИ-агент PMO Control Center для компании Турон Телеком.
-Ты помогаешь управлять проектами, задачами и командой.
-Отвечай кратко, по делу, на русском языке. Используй эмодзи для наглядности.
-
-ТЕКУЩИЕ ДАННЫЕ СИСТЕМЫ:
-${JSON.stringify(context || {}, null, 2)}
-
-Ты можешь:
-- Анализировать статус проектов и задач
-- Находить узкие места и риски
-- Давать рекомендации по приоритетам
-- Создавать задачи (отвечай JSON: {"action":"create_task","title":"...","owner":"...","priority":"high/medium/low","deadline":"YYYY-MM-DD","projectId":N})
-- Обновлять статус задачи (отвечай JSON: {"action":"update_task","taskId":N,"status":"todo/inprogress/done"})
-- Отвечать на вопросы о команде и продуктах
-
-Если создаёшь задачу или обновляешь — включи JSON действие в ответ.`;
-
-  // If API key provided — use Claude or Groq
-  if (apiKey && (apiKey.startsWith('sk-ant-') || apiKey.startsWith('gsk_'))) {
-    try {
-      let reply = null;
-
-      if (apiKey.startsWith('gsk_')) {
-        // GROQ (free, OpenAI-compatible)
-        const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-          body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            max_tokens: 1024,
-            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: message }]
-          })
-        });
-        const data = await resp.json();
-        if (data.choices && data.choices[0]) reply = data.choices[0].message.content;
-        else throw new Error(data.error?.message || 'Groq error');
-        return res.json({ ok: true, reply, source: 'groq' });
-
-      } else {
-        // CLAUDE (Anthropic)
-        const resp = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1024,
-            system: systemPrompt, messages: [{ role: 'user', content: message }] })
-        });
-        const data = await resp.json();
-        if (data.content && data.content[0]) reply = data.content[0].text;
-        else throw new Error(data.error?.message || 'Claude error');
-        return res.json({ ok: true, reply, source: 'claude' });
-      }
-    } catch (e) {
-      console.log('[AI] API failed:', e.message, '— using rule-based');
-    }
-  }
-
-  // Rule-based AI (works without API key)
-  const reply = ruleBasedAI(message, context || {});
-  res.json({ ok: true, reply, source: 'local' });
 });
 
 function ruleBasedAI(msg, ctx) {
