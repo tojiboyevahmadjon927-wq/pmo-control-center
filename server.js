@@ -10,13 +10,14 @@ app.use(cors());app.use(express.json({limit:'10mb'}));app.use(express.static(DIR
 // and far better than the previous state, which had NO server-side auth at all
 // (anyone who knew the URL could GET/POST the full dataset, passwords included).
 const SESSIONS=new Map();
-const SESSION_TTL_MS=12*3600*1000; // 12h
+const SESSION_TTL_MS=null; // sessions no longer expire by time (removed per user request)
 function makeToken(){return crypto.randomBytes(24).toString('hex');}
-function createSession(userId){const token=makeToken();SESSIONS.set(token,{userId,expires:Date.now()+SESSION_TTL_MS});return token;}
+function createSession(userId){const token=makeToken();SESSIONS.set(token,{userId,expires:null});return token;}
 function getSession(token){
   const s=SESSIONS.get(token);
   if(!s)return null;
-  if(Date.now()>s.expires){SESSIONS.delete(token);return null;}
+  // No TTL check — a session now lasts until the server process restarts
+  // (SESSIONS is in-memory) or the user is deleted/logs out.
   return s;
 }
 function isHashed(pw){return typeof pw==='string'&&/^\$2[aby]?\$/.test(pw);}
