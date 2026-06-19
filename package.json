@@ -15,6 +15,7 @@
     "express": "^5.2.1",
     "mysql2": "^3.22.4",
     "multer": "^1.4.5-lts.1",
-    "mammoth": "^1.8.0"
+    "mammoth": "^1.8.0",
+    "bcryptjs": "^2.4.3"
   }
 }
